@@ -7,6 +7,7 @@ import pickle
 
 from .base_dataset import BaseDataset
 from .view import read_view
+from .view import numpy_image_to_torch
 from ..geometry import Camera, Pose
 from ...settings import DATA_PATH
 
@@ -41,6 +42,8 @@ class CMU(BaseDataset):
         'pad': None,
         'optimal_crop': True,
         'seed': 0,
+
+        'undistort_images': True,
 
         'max_num_points3D': 512,
         'force_num_points3D': False,
@@ -154,6 +157,19 @@ class _Dataset(torch.utils.data.Dataset):
             data['points3D'] = data['T_w2cam'] * p3D[obs]
         return data
 
+    def _undistort(self, image, camera_intrinsics):
+        image = torch_image_to_numpy(image)
+        camera_intrinsics_np = camera_intrinsics._data.numpy()
+        K = np.zeros((3, 3))
+        K[0, 0], K[1, 1] = camera_intrinsics_np.fx, camera_intrinsics_np.fy
+        K[0, 2], K[1, 2] = camera_intrinsics_np.cx, camera_intrinsics_np.cy
+        K[2, 2] = 1
+        image_undist = cv2.undistort(image, K, camera_intrinsics_np.dist, None, K)
+        camera_intrinsics_undist = copy.deepcopy(camera_intrinsics)
+        camera_intrinsics_undist.dist[:] = 0
+        image = numpy_image_to_torch(image)
+        return image_undist, camera_intrinsics_undist
+
     def __getitem__(self, idx):
         if self.conf.two_view:
             slice_, idx_q, idx_r, overlap = self.items[idx]
@@ -163,7 +179,11 @@ class _Dataset(torch.utils.data.Dataset):
             common = np.array(list(set(obs_r) & set(obs_q)))
 
             data_r = self._read_view(slice_, idx_r, common, is_reference=True)
+            if self.conf.undistort_images:
+                data_r['image'], data_r['camera'] = self._undistort(data_r['image'], data_r['camera'])
             data_q = self._read_view(slice_, idx_q, common)
+            if self.conf.undistort_images:
+                data_q['image'], data_q['camera'] = self._undistort(data_q['image'], data_q['camera'])
             data = {
                 'ref': data_r,
                 'query': data_q,
@@ -174,6 +194,8 @@ class _Dataset(torch.utils.data.Dataset):
         else:
             slice_, idx = self.items[idx]
             data = self._read_view(slice_, idx, is_reference=True)
+            if self.conf.undistort_images:
+                data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
         data['scene'] = slice_
         return data
 

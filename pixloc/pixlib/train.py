@@ -143,6 +143,8 @@ def training(rank, conf, output_dir, args):
         writer = SummaryWriter(log_dir=str(output_dir))
 
     data_conf = copy.deepcopy(conf.data)
+    data_conf.undistort_images = args.undistort_images
+
     if args.distributed:
         logger.info(f'Training in distributed mode with {args.n_gpus} GPUs')
         assert torch.cuda.is_available()
@@ -365,6 +367,7 @@ if __name__ == '__main__':
     parser.add_argument('--restore', action='store_true')
     parser.add_argument('--distributed', action='store_true')
     parser.add_argument('dotlist', nargs='*')
+    parser.add_argument('--undistort-images', action='store_true')
     args = parser.parse_intermixed_args()
 
     logger.info(f'Starting experiment {args.experiment}')

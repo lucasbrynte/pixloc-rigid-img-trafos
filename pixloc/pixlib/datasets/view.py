@@ -18,6 +18,15 @@ def numpy_image_to_torch(image):
     return torch.from_numpy(image / 255.).float()
 
 
+def torch_image_to_numpy(image):
+    """Convert to (still float32) numpy array, reorder the dimensions back to (H, W, C), and rescale pixel intensities to the [0, 255] range."""
+    assert len(image.shape) == 3
+    assert image.dtype == torch.float32
+    image = image.permute(1, 2, 0).numpy() * 255. # CxHxW to HxWxC
+    assert image.dtype == torch.float32
+    return image
+
+
 def read_image(path, grayscale=False):
     mode = cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR
     image = cv2.imread(str(path), mode)
