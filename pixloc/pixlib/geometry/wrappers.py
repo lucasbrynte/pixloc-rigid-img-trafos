@@ -351,7 +351,7 @@ class Camera(TensorWrapper):
         p2d, visible = self.project(p3d)
         p2d, mask = self.undistort(p2d)
         p2d = self.denormalize(p2d)
-        valid = visible & mask & self.in_image(p2d)
+        valid = visible & mask & self.in_image(p2d) # TODO-G: Augmentation mask? PY-mask?
         return p2d, valid
 
     def J_world2image(self, p3d: torch.Tensor):
