@@ -22,6 +22,7 @@ class DirectAbsoluteCost:
         p3D_q = T_w2q * p3D
         p2D, visible = camera.world2image(p3D_q)
         
+        # TODO-G: What is torch.warp_point(p2D)?  
         if self.warp: # If the image is warped, we need to transform from P^2 to PY
             p2D,nu,dnu,nrm = torch.warp_point(p2D)
         
@@ -29,6 +30,7 @@ class DirectAbsoluteCost:
             F_query, p2D, return_gradients=do_gradients)
         valid = valid & visible
         
+        # TODO-G: Aren't these gradients handled by the changes in geometry/utils.py ?
         if self.warp:
             gradients = nu*gradients  + dnu * (p2D*gradients).sum(-1,keepdim=True)*p2D/(nrm+1e-6)
 

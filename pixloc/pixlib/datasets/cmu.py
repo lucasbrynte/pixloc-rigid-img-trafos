@@ -4,10 +4,13 @@ import numpy as np
 import logging
 import torch
 import pickle
+import cv2
+import copy
 
 from .base_dataset import BaseDataset
 from .view import read_view
 from .view import numpy_image_to_torch
+from .view import torch_image_to_numpy
 from ..geometry import Camera, Pose
 from ...settings import DATA_PATH
 
@@ -44,6 +47,7 @@ class CMU(BaseDataset):
         'seed': 0,
 
         'undistort_images': True,
+        'warp_PY_images': False,
         'use_rotational_homography_augmentation': False,
         'max_inplane_angle': 0,
         'max_tilt_angle': 0,
@@ -144,6 +148,8 @@ class _Dataset(torch.utils.data.Dataset):
         data['index'] = idx
         if self.conf.undistort_images:
             data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
+        if self.conf.warp_PY_images:
+            data['image'], data['camera'] = self._warp_PY(data['image'], data['camera'])
         assert (tuple(data['camera'].size.numpy())
                 == data['image'].shape[1:][::-1])
 
@@ -206,6 +212,12 @@ class _Dataset(torch.utils.data.Dataset):
         camera_intrinsics_undist.dist[:] = 0
         image = numpy_image_to_torch(image)
         return image_undist, camera_intrinsics_undist
+
+    def _warp_PY(self, image, camera_intrinsics):
+        # TODO-G: Implement warping of input images, perhaps with cv2?
+        # Need to decide whether to do this on the original or the undistorted images.
+        # In the first case, create some type of assertion that not both are done.
+        return NotImplementedError()
 
     def __getitem__(self, idx):
         if self.conf.two_view:
@@ -348,7 +360,7 @@ class _Dataset(torch.utils.data.Dataset):
         ##### STEP 1: Apply in-plane rotation on pose annotations #####
         augmented_rotation_matrix = np.dot(R_inplane, augmented_rotation_matrix)
         augmented_translation_vector = np.dot(augmented_translation_vector, R_inplane.T)
-        augmented_points3D = points3D..............
+        augmented_points3D = points3D..............  # TODO-G: What should be done here?
 
         ##### STEP 2: Apply tilt rotation on pose annotations #####
         augmented_rotation_matrix = np.dot(R_tilt, augmented_rotation_matrix)
