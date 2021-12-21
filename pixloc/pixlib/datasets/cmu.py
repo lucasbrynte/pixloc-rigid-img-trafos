@@ -44,6 +44,9 @@ class CMU(BaseDataset):
         'seed': 0,
 
         'undistort_images': True,
+        'use_rotational_homography_augmentation': False,
+        'max_inplane_angle': 0,
+        'max_tilt_angle': 0,
 
         'max_num_points3D': 512,
         'force_num_points3D': False,
@@ -144,12 +147,36 @@ class _Dataset(torch.utils.data.Dataset):
         assert (tuple(data['camera'].size.numpy())
                 == data['image'].shape[1:][::-1])
 
+        if self.conf.use_rotational_homography_augmentation:
+            assert self.conf.undistort_images
+            inplane_angle, tilt_angle, tilt_axis = self._sample_homography_augmentation_parameters()
+            if is_reference:
+                T_w2cam_old = data['T_w2cam']
+                p3D_old = p3D
+            data['image'], data['T_w2cam'] = self._rotational_homography_augmentation(
+                data['image'],
+                data['T_w2cam'],
+                data['camera'],
+                inplane_angle,
+                tilt_angle,
+                tilt_axis,
+            )
+            if is_reference:
+                p3D = (data['T_w2cam'] @ T_w2cam_old.inv()) * p3D
+            data['inplane_angle'] = inplane_angle
+            data['tilt_angle'] = tilt_angle
+            data['tilt_axis'] = tilt_axis
+
         if is_reference:
             obs_orig = self.info[slice_]['p3D_observed'][idx]
             if self.conf.crop:
                 obs = self._determine_valid_projections(obs_orig, p3D, data['camera'], data['T_w2cam'])
             else:
                 obs = obs_orig
+            if self.conf.use_rotational_homography_augmentation:
+                # If we have performed homography augmentation, we also want to filter points such that black areas are omitted, i.e. regions that are "valid" now, but were not before the augmentation was carried out.
+                obs_pre_aug = self._determine_valid_projections(obs_orig, p3D_old, camera_old, T_w2cam_old)
+                obs = np.intersect1d(obs, obs_pre_aug)
             num_diff = self.conf.max_num_points3D - len(obs)
             if num_diff < 0:
                 obs = np.random.choice(obs, self.conf.max_num_points3D)
@@ -205,3 +232,131 @@ class _Dataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.items)
+
+    def _sample_homography_augmentation_parameters(self):
+        inplane_angle = np.random.uniform(low=-self.conf.max_inplane_angle[0], high=self.conf.max_inplane_angle[1])
+        tilt_angle = np.random.uniform(low=-self.conf.max_tilt_angle[0], high=self.conf.max_tilt_angle[1])
+        tmp_inplane_alpha = np.random.uniform(low=0, high=2*math.pi)
+        tilt_axis = np.array([np.cos(tmp_inplane_alpha), np.sin(tmp_inplane_alpha)])
+        return inplane_angle, tilt_angle, tilt_axis
+
+    def _rotational_homography_augmentation(
+        self,
+        image,
+        T_w2cam,
+        camera_intrinsics,
+        inplane_angle,
+        tilt_angle,
+        tilt_axis,
+    ):
+        """
+        Args:
+            image: The image to augment
+            T_w2cam: R, t annotation as a Pose object
+            calibration_intrinsics: The camera calibration parameters. We are assuming there is no distortion.
+            inplane_angle: rotate the image with the given angle
+            tilt_angle: simulate rotating the camera around an axis in the principal plane with the given angle
+            tilt_axis: rotation axis for tilting (should be in principal plane, and provided with x and y components only: shape (2,))
+        """
+        image = torch_image_to_numpy(image)
+        orig_rotation_matrix, orig_translation_vector = T_w2cam.numpy()
+        camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
+        camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
+
+        # We are assuming there is no distortion.
+        assert np.all(camera_intrinsics_np.dist == 0)
+
+        K = np.zeros((3, 3))
+        K[0, 0], K[1, 1] = camera_intrinsics_np.fx.numpy(), camera_intrinsics_np.fy.numpy()
+        K[0, 2], K[1, 2] = camera_intrinsics_np.cx.numpy(), camera_intrinsics_np.cy.numpy()
+        K[2, 2] = 1
+
+        #get the center point from the intrinsic camera matrix
+        cx = K[0, 2]
+        cy = K[1, 2]
+        # if self.radial_arctan_prewarped_images:
+        # # if self.depth_regression_mode == 'cam2obj_dist':
+        #     # Transform principal point, according to warping.
+        #     cx, cy = radial_arctan_transform(
+        #         cx.reshape((1,1)), # x
+        #         cy.reshape((1,1)), # y
+        #         K[0,0], # fx
+        #         K[1,1], # fy
+        #         K[0,2], # px
+        #         K[1,2], # py
+        #         self.one_based_indexing_for_prewarp,
+        #         self.original_image_shape,
+        #     )
+        #     cx = cx.squeeze()
+        #     cy = cy.squeeze()
+        assert cx.shape == ()
+        assert cy.shape == ()
+
+        height, width, _ = img.shape
+
+        # The augmentation is defined as the follow chain:
+        # (1) In-plane rotation
+        # (2) Tilt rotation (corresponding to homography transformation in image plane)
+
+        # OpenCV yields a single 2x3 similarity matrix to account for both rotation and scaling (here =1):
+        # Note: A positive (counter-clockwise) rotation around the z-axis, is a negative (clockwise) rotation in the image plane (which is around the negative z-axis).
+        # If the provided angle is positive, the "getRotationMatrix2D" function indeed returns a matrix which yields "counter-clockwise" rotations, but in a negatively oriented coordinate system such as the image plane.
+        # The same matrix would result in a clockwise rotation in a positively oriented frame (such as the image plane seen from behind).
+        # Consequently, it should actually be the case that [R_inplane_2d_mat; 0 0 1] = K*R_inplane*inv(K).
+        try:
+            # Note, this should work!
+            R_inplane_2d_mat = cv2.getRotationMatrix2D((float(cx), float(cy)), -inplane_angle, 1) # Last argument is the scaling factor of the 2x3 similarity transformation matrix.
+        except:
+            # While this is unexpected!
+            try:
+                R_inplane_2d_mat = cv2.getRotationMatrix2D((cx, cy), -inplane_angle, 1) # Last argument is the scaling factor of the 2x3 similarity transformation matrix.
+            except:
+                R_inplane_2d_mat = cv2.getRotationMatrix2D(np.array([cx, cy]), -inplane_angle, 1) # Last argument is the scaling factor of the 2x3 similarity transformation matrix.
+
+        # Express in-plane rotation with 3D rotation vector / matrix. Rotation is around the z-axis in the camera coordinate system.
+        inplane_rotation_vector = np.zeros((3,))
+        inplane_rotation_vector[2] = inplane_angle / 180. * math.pi
+        R_inplane, _ = cv2.Rodrigues(inplane_rotation_vector)
+
+        # Express tilt rotation with 3D rotation vector / matrix. Rotation is around an axis in the principal plane z = 0.
+        assert tilt_axis.shape == (2,)
+        tilt_axis = np.concatenate([tilt_axis, np.zeros((1,))], axis=0) # 3D lift to the plane z = 0
+        assert tilt_axis.shape == (3,)
+
+        R_tilt, _ = cv2.Rodrigues(tilt_axis * tilt_angle / 180. * math.pi)
+        # Sigma = np.diag([scale, scale, 1])
+        # Note: One could have considered to undo the effects of scaling, by taking a matrix "Sigma" into account, and include Sigma in K when applying R_tilt.
+        # However, it is not entirely obvious how to best handle this part, as Sigma results only in an approximative rigid transformation to start with.
+        # Whether to undo Sigma or not before applying R_tilt boils down to whether the scaled or unscaled image is regarded as the observation upon which we would like to apply the tilt augmentation.
+        assert K.shape == (3, 3)
+        H_tilt = K @ R_tilt @ np.linalg.inv(K)
+
+        # Combine everything into a single homography warping:
+        H = H_tilt @ np.concatenate([R_inplane_2d_mat, np.array([[0, 0, 1]])], axis=0)
+        assert H.shape == (3, 3)
+        augmented_img = cv2.warpPerspective(img, H, (width, height))
+
+        # Initialize the final rotation annotation, as it was before augmentation
+        augmented_rotation_matrix = np.copy(orig_rotation_matrix)
+        # Also initialize the final translation annotation
+        augmented_translation_vector = np.copy(orig_translation_vector)
+        # Also initialize the final translation annotation
+        augmented_translation_vector = np.copy(orig_translation_vector)
+        # And the 3D points, which are expressed in the camera frame, which will now be rotated...
+        augmented_points3D = np.copy(points3D)
+
+        ##### STEP 1: Apply in-plane rotation on pose annotations #####
+        augmented_rotation_matrix = np.dot(R_inplane, augmented_rotation_matrix)
+        augmented_translation_vector = np.dot(augmented_translation_vector, R_inplane.T)
+        augmented_points3D = points3D..............
+
+        ##### STEP 2: Apply tilt rotation on pose annotations #####
+        augmented_rotation_matrix = np.dot(R_tilt, augmented_rotation_matrix)
+        augmented_translation_vector = np.dot(augmented_translation_vector, R_tilt.T)
+
+        augmented_rotation_vector, _ = cv2.Rodrigues(augmented_rotation_matrix)
+
+
+        augmented_T_w2cam = Pose.from_Rt(augmented_rotation_matrix, augmented_translation_vector)
+        augmented_img = numpy_image_to_torch(augmented_img)
+        return augmented_img, augmented_T_w2cam
