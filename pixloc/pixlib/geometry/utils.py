@@ -48,7 +48,7 @@ def undistort_points(pts, dist):
     if ndist > 0:
         k1, k2 = dist[..., :2].split(1, -1)
         r2 = torch.sum(pts**2, -1, keepdim=True)
-        if not k1.isnan().any():  # TODO: do we want this check to check only one k1 or all? or individually?
+        if not k1.isnan().any():  # TODO-G: do we want this check to check only one k1 or all? or individually?
             radial = k1*r2 + k2*r2**2
             undist = undist + pts * radial
 
@@ -64,7 +64,6 @@ def undistort_points(pts, dist):
             valid = valid & torch.squeeze(~limited | (r2 < limit), -1)
         else:  # if we choose k1=NaN, arctan model is implemented
             r = torch.sqrt(r2)
-            # instead of multiplying with arctan(r)/r, set s=arctan(r), and calculate s/tan(s)=cos(s)/sinc(s)
 
             undist = undist*radial_function(r)
 
