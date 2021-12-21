@@ -159,7 +159,8 @@ class _Dataset(torch.utils.data.Dataset):
 
     def _undistort(self, image, camera_intrinsics):
         image = torch_image_to_numpy(image)
-        camera_intrinsics_np = camera_intrinsics._data.numpy()
+        camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
+        camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
         K = np.zeros((3, 3))
         K[0, 0], K[1, 1] = camera_intrinsics_np.fx, camera_intrinsics_np.fy
         K[0, 2], K[1, 2] = camera_intrinsics_np.cx, camera_intrinsics_np.cy
