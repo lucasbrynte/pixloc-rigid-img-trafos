@@ -145,10 +145,11 @@ class _Dataset(torch.utils.data.Dataset):
                 == data['image'].shape[1:][::-1])
 
         if is_reference:
-            obs = self.info[slice_]['p3D_observed'][idx]
+            obs_orig = self.info[slice_]['p3D_observed'][idx]
             if self.conf.crop:
-                _, valid = data['camera'].world2image(data['T_w2cam']*p3D[obs])
-                obs = obs[valid.numpy()]
+                obs = self._determine_valid_projections(obs_orig, p3D, data['camera'], data['T_w2cam'])
+            else:
+                obs = obs_orig
             num_diff = self.conf.max_num_points3D - len(obs)
             if num_diff < 0:
                 obs = np.random.choice(obs, self.conf.max_num_points3D)
@@ -156,8 +157,14 @@ class _Dataset(torch.utils.data.Dataset):
                 add = np.random.choice(
                     np.delete(np.arange(len(p3D)), obs), num_diff)
                 obs = np.r_[obs, add]
+            # NOTE: Why would * operation work? p3D[obs] should be Nx3, and T_w2cam should be 4x4.
             data['points3D'] = data['T_w2cam'] * p3D[obs]
         return data
+
+    def _determine_valid_projections(self, obs, p3D, camera, T_w2cam):
+        _, valid = camera.world2image(T_w2cam*p3D[obs])
+        obs = obs[valid.numpy()]
+        return obs
 
     def _undistort(self, image, camera_intrinsics):
         image = torch_image_to_numpy(image)
