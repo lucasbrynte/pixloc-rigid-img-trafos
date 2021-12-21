@@ -139,6 +139,8 @@ class _Dataset(torch.utils.data.Dataset):
         data = read_view(self.conf, path, camera, T, p3D, common_p3D_idx,
                          random=(self.split == 'train'))
         data['index'] = idx
+        if self.conf.undistort_images:
+            data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
         assert (tuple(data['camera'].size.numpy())
                 == data['image'].shape[1:][::-1])
 
