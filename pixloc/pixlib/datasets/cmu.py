@@ -182,11 +182,7 @@ class _Dataset(torch.utils.data.Dataset):
             common = np.array(list(set(obs_r) & set(obs_q)))
 
             data_r = self._read_view(slice_, idx_r, common, is_reference=True)
-            if self.conf.undistort_images:
-                data_r['image'], data_r['camera'] = self._undistort(data_r['image'], data_r['camera'])
             data_q = self._read_view(slice_, idx_q, common)
-            if self.conf.undistort_images:
-                data_q['image'], data_q['camera'] = self._undistort(data_q['image'], data_q['camera'])
             data = {
                 'ref': data_r,
                 'query': data_q,
@@ -197,8 +193,6 @@ class _Dataset(torch.utils.data.Dataset):
         else:
             slice_, idx = self.items[idx]
             data = self._read_view(slice_, idx, is_reference=True)
-            if self.conf.undistort_images:
-                data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
         data['scene'] = slice_
         return data
 
