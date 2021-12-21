@@ -113,7 +113,7 @@ def J_undistort_points(pts, dist):
             
             norm_pts = torch.nn.functional.normalize(pts, dim=1, eps=1e-12)
             
-            J_diag = f *J_diag + g *norm_points**2
+            J_diag = f*J_diag + g *norm_points**2
             J_cross = g*torch.prod(pts, -1, keepdim=True)
 
         if ndist > 2:
