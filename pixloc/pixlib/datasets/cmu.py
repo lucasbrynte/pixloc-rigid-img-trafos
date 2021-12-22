@@ -246,19 +246,80 @@ class _Dataset(torch.utils.data.Dataset):
         # 1. normalize
         map_x, map_y = (map_x - K[0, 2])/K[0, 0], \
                 (map_y - K[1, 2])/K[1, 1]
+                
+        
+        # get bounding box and new camera parameters
+        A,B,C,D, K_new =self.PY_bounding_box(map_x[0],map_x[-1],map_y[0],map_y[1],w,h)
+        
+        
+        map_x, map_y = np.meshgrid(np.linspace(A,B,w),np.linspace(C,D,h))
         # 2. tan-warp
         r = np.clip(np.sqrt(map_x**2 + map_y**2), a_min=1.0e-8, a_max=None)
         r = np.tan(r) / r
         map_x, map_y = r * map_x, r * map_y
         # 3. unnormalize
-        map_x, map_y = K[0, 0] * map_x + K[0, 2], \
-                K[1, 1] * map_y + K[1, 2]
+        map_x, map_y = K_new[0, 0] * map_x + K_new[0, 2], \
+                K_new[1, 1] * map_y + K_new[1, 2]
 
-        image_warp = cv2.remap(image, map_x, map_y, cv.INTER_LINEAR)
+        image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)
         image_warp = numpy_image_to_torch(image_warp)
         # TODO-G: Add mask for black pixels?
+        mask = np.ones(len(w),len(h))
+        mask_warp = cv2.remap(mask,map_x,map_y,cv2.INTER_NEAREST)
+        
+        mask_warp= mask_warp
+        
+        #fix camera parameters
+        K_pt = torch.Tensor(K_new)
+        
+        camera_intrinsics_warp.fx = K_pt[0,0]
+        camera_intrinsics_warp.fy = K_pt[1,1]
+        camera_intrinsics_warp.cx = K_pt[0,2]
+        camera_intrinsics_warp.cy = K_pt[1,2]
+        
         
         return image_warp, camera_intrinsics_warp
+    
+    @static_method
+    def PY_bounding_box(a,b,c,d,w,h):
+        # if rho is map P^2 -> PY,
+        # finds A,B,C,D so that rho([a,b]x[c,d]) < [A,B]x[C,D]
+        # and calibration parameters that maps [A,B}x[C,D] to [0,w]x[0,h]
+        
+        x_axis = np.linspace(a,b)
+        y_axis = np.linspace(c,d)
+        
+        # A
+        r= np.clip(np.sqrt(a**2+y_axis**2), a_min=1.0e-8,a_max=None)
+        A = torch.min(a*np.arctan(r)/r)
+        
+        # B
+        r= np.clip(np.sqrt(b**2+y_axis**2), a_min=1.0e-8,a_max=None)
+        B = torch.max(b*np.arctan(r)/r)
+        
+        # C
+        r= np.clip(np.sqrt(c**2+x_axis**2), a_min=1.0e-8,a_max=None)
+        C = torch.min(c*np.arctan(r)/r)
+        
+        # D
+        r= np.clip(np.sqrt(d**2+x_axis**2), a_min=1.0e-8,a_max=None)
+        D = torch.min(d*np.arctan(r)/r)
+        
+        # calculate calibration parameters
+        K = np.zeros((3, 3))
+        
+        K[0,0] = (B-A)/w
+        K[0,2] = 0.5*(w-(B+A)/K[0,0])
+        K[1,1] = (D-C)/h
+        K[1,2] = +.5*(h-(C+D)/K[1,1])
+        K[2,2] = 1
+        
+        return A,B,C,D,K
+        
+        
+        
+        
+        
 
     def __getitem__(self, idx):
         if self.conf.two_view:
@@ -289,7 +350,7 @@ class _Dataset(torch.utils.data.Dataset):
     def _sample_homography_augmentation_parameters(self):
         inplane_angle = np.random.uniform(low=-self.conf.max_inplane_angle[0], high=self.conf.max_inplane_angle[1])
         tilt_angle = np.random.uniform(low=-self.conf.max_tilt_angle[0], high=self.conf.max_tilt_angle[1])
-        tmp_inplane_alpha = np.random.uniform(low=0, high=2*math.pi)
+        tmp_inplane_alpha = np.random.uniform(low=0, high=2*np.pi)
         tilt_axis = np.array([np.cos(tmp_inplane_alpha), np.sin(tmp_inplane_alpha)])
         return inplane_angle, tilt_angle, tilt_axis
 
@@ -345,7 +406,7 @@ class _Dataset(torch.utils.data.Dataset):
         assert cx.shape == ()
         assert cy.shape == ()
 
-        height, width, _ = img.shape
+        height, width, _ = image.shape
 
         # The augmentation is defined as the follow chain:
         # (1) In-plane rotation
@@ -368,7 +429,7 @@ class _Dataset(torch.utils.data.Dataset):
 
         # Express in-plane rotation with 3D rotation vector / matrix. Rotation is around the z-axis in the camera coordinate system.
         inplane_rotation_vector = np.zeros((3,))
-        inplane_rotation_vector[2] = inplane_angle / 180. * math.pi
+        inplane_rotation_vector[2] = inplane_angle / 180. * np.pi
         R_inplane, _ = cv2.Rodrigues(inplane_rotation_vector)
 
         # Express tilt rotation with 3D rotation vector / matrix. Rotation is around an axis in the principal plane z = 0.
@@ -376,7 +437,7 @@ class _Dataset(torch.utils.data.Dataset):
         tilt_axis = np.concatenate([tilt_axis, np.zeros((1,))], axis=0) # 3D lift to the plane z = 0
         assert tilt_axis.shape == (3,)
 
-        R_tilt, _ = cv2.Rodrigues(tilt_axis * tilt_angle / 180. * math.pi)
+        R_tilt, _ = cv2.Rodrigues(tilt_axis * tilt_angle / 180. * np.pi)
         # Sigma = np.diag([scale, scale, 1])
         # Note: One could have considered to undo the effects of scaling, by taking a matrix "Sigma" into account, and include Sigma in K when applying R_tilt.
         # However, it is not entirely obvious how to best handle this part, as Sigma results only in an approximative rigid transformation to start with.
@@ -387,7 +448,7 @@ class _Dataset(torch.utils.data.Dataset):
         # Combine everything into a single homography warping:
         H = H_tilt @ np.concatenate([R_inplane_2d_mat, np.array([[0, 0, 1]])], axis=0)
         assert H.shape == (3, 3)
-        augmented_img = cv2.warpPerspective(img, H, (width, height))
+        augmented_img = cv2.warpPerspective(image, H, (width, height))
 
         # Initialize the final rotation annotation, as it was before augmentation
         augmented_rotation_matrix = np.copy(orig_rotation_matrix)
