@@ -149,6 +149,7 @@ class _Dataset(torch.utils.data.Dataset):
         if self.conf.undistort_images:
             data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
         if self.conf.warp_PY_images:
+            assert self.conf.undistort_images
             data['image'], data['camera'] = self._warp_PY(data['image'], data['camera'])
         assert (tuple(data['camera'].size.numpy())
                 == data['image'].shape[1:][::-1])
