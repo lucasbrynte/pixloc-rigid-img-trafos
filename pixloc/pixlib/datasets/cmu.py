@@ -243,6 +243,7 @@ class _Dataset(torch.utils.data.Dataset):
         return image_undist, camera_undist
 
     def _warp_PY(self, image, camera):
+        # TODO-G: Why are the plots of these warps shifted downwards (more black pixels at the top)?
         # Operates on undistorted images!
         image = torch_image_to_numpy(image)
         h, w = image.shape[:2]
