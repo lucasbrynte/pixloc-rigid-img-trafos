@@ -221,7 +221,7 @@ class _Dataset(torch.utils.data.Dataset):
         K[0, 0], K[1, 1] = camera_np.f[0], camera_np.f[1]
         K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
         K[2, 2] = 1
-        # Get calibration matrix that captures
+        # Get calibration matrix that captures the complete undistorted image
         K_new, roi = cv2.getOptimalNewCameraMatrix(K,
                                                    camera_np.dist,
                                                    (w, h),
@@ -278,9 +278,9 @@ class _Dataset(torch.utils.data.Dataset):
         map_x, map_y = K[0, 0] * map_x + K[0, 2], \
             K[1, 1] * map_y + K[1, 2]
 
-        image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)  # TODO-G: the 5 does something...?
+        image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)
         image_warp = numpy_image_to_torch(image_warp)
-        # TODO-G: Add mask for black pixels?
+        # TODO-G: Add mask for black pixels? Seems not to be necessary
         # mask = np.ones(len(w)
         # mask_warp = cv2.remap(mask, map_x, map_y, cv2.INTER_NEAREST)
 
@@ -369,8 +369,8 @@ class _Dataset(torch.utils.data.Dataset):
         return len(self.items)
 
     def _sample_homography_augmentation_parameters(self):
-        inplane_angle = np.random.uniform(low=-self.conf.max_inplane_angle[0], high=self.conf.max_inplane_angle[1])
-        tilt_angle = np.random.uniform(low=-self.conf.max_tilt_angle[0], high=self.conf.max_tilt_angle[1])
+        inplane_angle = np.random.uniform(low=-self.conf.max_inplane_angle, high=self.conf.max_inplane_angle)
+        tilt_angle = np.random.uniform(low=-self.conf.max_tilt_angle, high=self.conf.max_tilt_angle)
         tmp_inplane_alpha = np.random.uniform(low=0, high=2*np.pi)
         tilt_axis = np.array([np.cos(tmp_inplane_alpha), np.sin(tmp_inplane_alpha)])
         return inplane_angle, tilt_angle, tilt_axis
@@ -379,7 +379,7 @@ class _Dataset(torch.utils.data.Dataset):
         self,
         image,
         T_w2cam,
-        camera_intrinsics,
+        camera,
         inplane_angle,
         tilt_angle,
         tilt_axis,
@@ -388,22 +388,22 @@ class _Dataset(torch.utils.data.Dataset):
         Args:
             image: The image to augment
             T_w2cam: R, t annotation as a Pose object
-            calibration_intrinsics: The camera calibration parameters. We are assuming there is no distortion.
+            camera: A Camera object containing among other things the camera calibration parameters. We are assuming there is no distortion.
             inplane_angle: rotate the image with the given angle
             tilt_angle: simulate rotating the camera around an axis in the principal plane with the given angle
             tilt_axis: rotation axis for tilting (should be in principal plane, and provided with x and y components only: shape (2,))
         """
         image = torch_image_to_numpy(image)
         orig_rotation_matrix, orig_translation_vector = T_w2cam.numpy()
-        camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
-        camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
+        camera_np = copy.deepcopy(camera)
+        camera_np._data = camera_np._data.numpy()
 
         # We are assuming there is no distortion.
-        assert np.all(camera_intrinsics_np.dist == 0)
+        assert np.all(camera_np.dist == 0)
 
         K = np.zeros((3, 3))
-        K[0, 0], K[1, 1] = camera_intrinsics_np.fx.numpy(), camera_intrinsics_np.fy.numpy()
-        K[0, 2], K[1, 2] = camera_intrinsics_np.cx.numpy(), camera_intrinsics_np.cy.numpy()
+        K[0, 0], K[1, 1] = camera_np.f[0], camera_np.f[1]
+        K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
         K[2, 2] = 1
 
         #get the center point from the intrinsic camera matrix

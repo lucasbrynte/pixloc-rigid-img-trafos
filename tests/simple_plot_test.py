@@ -7,7 +7,7 @@ import numpy as np
 def plotting_test():
 
     number_plots = 5
-    for img_id in ['warp', 'orig', 'undist']:
+    for img_id in ['rhaug', 'warp', 'orig', 'undist']:
         data_conf = {
             'val_slices': ['9'],
             'val_batch_size': 1,
@@ -15,6 +15,11 @@ def plotting_test():
         if img_id == 'warp':
             data_conf['undistort_images'] = True
             data_conf['warp_PY_images'] = True
+        elif img_id == 'rhaug':
+            data_conf['undistort_images'] = True
+            data_conf['use_rotational_homography_augmentation'] = True
+            data_conf['max_inplane_angle'] = 5
+            data_conf['max_tilt_angle'] = 30
         elif img_id == 'undist':
             data_conf['undistort_images'] = True
         elif img_id == 'orig':
