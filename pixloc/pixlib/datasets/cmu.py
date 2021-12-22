@@ -158,7 +158,6 @@ class _Dataset(torch.utils.data.Dataset):
             inplane_angle, tilt_angle, tilt_axis = self._sample_homography_augmentation_parameters()
             if is_reference:
                 T_w2cam_old = data['T_w2cam']
-                p3D_old = p3D
             data['image'], data['T_w2cam'] = self._rotational_homography_augmentation(
                 data['image'],
                 data['T_w2cam'],
@@ -167,8 +166,6 @@ class _Dataset(torch.utils.data.Dataset):
                 tilt_angle,
                 tilt_axis,
             )
-            if is_reference:
-                p3D = (data['T_w2cam'] @ T_w2cam_old.inv()) * p3D
             data['inplane_angle'] = inplane_angle
             data['tilt_angle'] = tilt_angle
             data['tilt_axis'] = tilt_axis
@@ -181,7 +178,7 @@ class _Dataset(torch.utils.data.Dataset):
                 obs = obs_orig
             if self.conf.use_rotational_homography_augmentation:
                 # If we have performed homography augmentation, we also want to filter points such that black areas are omitted, i.e. regions that are "valid" now, but were not before the augmentation was carried out.
-                obs_pre_aug = self._determine_valid_projections(obs_orig, p3D_old, camera_old, T_w2cam_old)
+                obs_pre_aug = self._determine_valid_projections(obs_orig, p3D, camera_old, T_w2cam_old)
                 obs = np.intersect1d(obs, obs_pre_aug)
             num_diff = self.conf.max_num_points3D - len(obs)
             if num_diff < 0:
