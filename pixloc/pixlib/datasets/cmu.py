@@ -217,8 +217,8 @@ class _Dataset(torch.utils.data.Dataset):
         camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
         camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
         K = np.zeros((3, 3))
-        K[0, 0], K[1, 1] = camera_intrinsics_np.fx, camera_intrinsics_np.fy
-        K[0, 2], K[1, 2] = camera_intrinsics_np.cx, camera_intrinsics_np.cy
+        K[0, 0], K[1, 1] = camera_intrinsics_np.f[0], camera_intrinsics_np.f[1]
+        K[0, 2], K[1, 2] = camera_intrinsics_np.c[0], camera_intrinsics_np.c[1]
         K[2, 2] = 1
         # TODO-G perhaps change K to a new calibration to get rid of black pixels?
         # See cv2.getOptimalNewCameraMatrix
@@ -235,8 +235,8 @@ class _Dataset(torch.utils.data.Dataset):
         camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
         camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
         K = np.zeros((3, 3))
-        K[0, 0], K[1, 1] = camera_intrinsics_np.fx, camera_intrinsics_np.fy
-        K[0, 2], K[1, 2] = camera_intrinsics_np.cx, camera_intrinsics_np.cy
+        K[0, 0], K[1, 1] = camera_intrinsics_np.f[0], camera_intrinsics_np.f[1]
+        K[0, 2], K[1, 2] = camera_intrinsics_np.c[0], camera_intrinsics_np.c[1]
         K[2, 2] = 1
         camera_intrinsics_warp = copy.deepcopy(camera_intrinsics)  # G-TODO: maybe this needs to be modified (and then the normalize step as well)
 
@@ -245,81 +245,80 @@ class _Dataset(torch.utils.data.Dataset):
         map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
         # 1. normalize
         map_x, map_y = (map_x - K[0, 2])/K[0, 0], \
-                (map_y - K[1, 2])/K[1, 1]
-                
-        
+            (map_y - K[1, 2])/K[1, 1]
+
         # get bounding box and new camera parameters
-        A,B,C,D, K_new =self.PY_bounding_box(map_x[0],map_x[-1],map_y[0],map_y[1],w,h)
-        
-        
-        map_x, map_y = np.meshgrid(np.linspace(A,B,w),np.linspace(C,D,h))
+        A, B, C, D, K_new = self.PY_bounding_box(
+            map_x[0], map_x[-1], map_y[0], map_y[1], w, h)
+
+        map_x, map_y = np.meshgrid(np.linspace(A, B, w, dtype=np.float32),
+                                   np.linspace(C, D, h, dtype=np.float32))
         # 2. tan-warp
         r = np.clip(np.sqrt(map_x**2 + map_y**2), a_min=1.0e-8, a_max=None)
         r = np.tan(r) / r
         map_x, map_y = r * map_x, r * map_y
         # 3. unnormalize
         map_x, map_y = K[0, 0] * map_x + K[0, 2], \
-                K[1, 1] * map_y + K[1, 2]
+            K[1, 1] * map_y + K[1, 2]
 
-        image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)
+        image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)  # TODO-G: the 5 does something...?
         image_warp = numpy_image_to_torch(image_warp)
         # TODO-G: Add mask for black pixels?
-        mask = np.ones(len(w),len(h))
-        mask_warp = cv2.remap(mask,map_x,map_y,cv2.INTER_NEAREST)
-        
-        mask_warp= mask_warp
-        
-        #fix camera parameters
+        # mask = np.ones(len(w), len(h))
+        # mask_warp = cv2.remap(mask, map_x, map_y, cv2.INTER_NEAREST)
+
+        # mask_warp = mask_warp
+
+        # fix camera parameters
         K_pt = torch.Tensor(K_new)
-        
-        camera_intrinsics_warp.fx = K_pt[0,0]
-        camera_intrinsics_warp.fy = K_pt[1,1]
-        camera_intrinsics_warp.cx = K_pt[0,2]
-        camera_intrinsics_warp.cy = K_pt[1,2]
-        
-        
+
+        camera_intrinsics_warp.f[0] = K_pt[0, 0]
+        camera_intrinsics_warp.f[1] = K_pt[1, 1]
+        camera_intrinsics_warp.c[0] = K_pt[0, 2]
+        camera_intrinsics_warp.c[1] = K_pt[1, 2]
+
         return image_warp, camera_intrinsics_warp
-    
+
     @staticmethod
-    def PY_bounding_box(a,b,c,d,w,h):
+    def PY_bounding_box(a, b, c, d, w, h):
         # if rho is map P^2 -> PY,
         # finds A,B,C,D so that rho([a,b]x[c,d]) < [A,B]x[C,D]
         # and calibration parameters that maps [A,B}x[C,D] to [0,w]x[0,h]
-        
-        x_axis = np.linspace(a,b)
-        y_axis = np.linspace(c,d)
-        
+
+        x_axis = np.linspace(a, b)
+        y_axis = np.linspace(c, d)
+
         # A
-        r= np.clip(np.sqrt(a**2+y_axis**2), a_min=1.0e-8,a_max=None)
-        A = torch.min(a*np.arctan(r)/r)
-        
+        r = np.clip(np.sqrt(a**2+y_axis**2), a_min=1.0e-8, a_max=None)
+        A = np.min(a*np.arctan(r)/r)
+
         # B
-        r= np.clip(np.sqrt(b**2+y_axis**2), a_min=1.0e-8,a_max=None)
-        B = torch.max(b*np.arctan(r)/r)
-        
+        r = np.clip(np.sqrt(b**2+y_axis**2), a_min=1.0e-8, a_max=None)
+        B = np.max(b*np.arctan(r)/r)
+
         # C
-        r= np.clip(np.sqrt(c**2+x_axis**2), a_min=1.0e-8,a_max=None)
-        C = torch.min(c*np.arctan(r)/r)
-        
+        r = np.clip(np.sqrt(c**2+x_axis**2), a_min=1.0e-8, a_max=None)
+        C = np.min(c*np.arctan(r)/r)
+
         # D
         r= np.clip(np.sqrt(d**2+x_axis**2), a_min=1.0e-8,a_max=None)
-        D = torch.min(d*np.arctan(r)/r)
-        
+        D = np.min(d*np.arctan(r)/r)
+
         # calculate calibration parameters
         K = np.zeros((3, 3))
-        
+
         K[0,0] = (B-A)/w
         K[0,2] = 0.5*(w-(B+A)/K[0,0])
         K[1,1] = (D-C)/h
         K[1,2] = +.5*(h-(C+D)/K[1,1])
         K[2,2] = 1
-        
+
         return A,B,C,D,K
-        
-        
-        
-        
-        
+
+
+
+
+
 
     def __getitem__(self, idx):
         if self.conf.two_view:
