@@ -7,7 +7,7 @@ import numpy as np
 def plotting_test():
 
     number_plots = 5
-    for img_id in ['orig', 'undist', 'warp']:
+    for img_id in ['warp', 'orig', 'undist']:
         data_conf = {
             'val_slices': ['9'],
             'val_batch_size': 1,

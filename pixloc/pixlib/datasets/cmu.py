@@ -212,47 +212,65 @@ class _Dataset(torch.utils.data.Dataset):
         obs = obs[valid.numpy()]
         return obs
 
-    def _undistort(self, image, camera_intrinsics):
+    def _undistort(self, image, camera):
         image = torch_image_to_numpy(image)
-        camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
-        camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
+        h, w = image.shape[:2]
+        camera_np = copy.deepcopy(camera)
+        camera_np._data = camera_np._data.numpy()
         K = np.zeros((3, 3))
-        K[0, 0], K[1, 1] = camera_intrinsics_np.f[0], camera_intrinsics_np.f[1]
-        K[0, 2], K[1, 2] = camera_intrinsics_np.c[0], camera_intrinsics_np.c[1]
+        K[0, 0], K[1, 1] = camera_np.f[0], camera_np.f[1]
+        K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
         K[2, 2] = 1
-        # TODO-G perhaps change K to a new calibration to get rid of black pixels?
-        # See cv2.getOptimalNewCameraMatrix
-        image_undist = cv2.undistort(image, K, camera_intrinsics_np.dist, None, K)
-        camera_intrinsics_undist = copy.deepcopy(camera_intrinsics)
-        camera_intrinsics_undist.dist[:] = 0
+        # Get calibration matrix that captures
+        K_new, roi = cv2.getOptimalNewCameraMatrix(K,
+                                                   camera_np.dist,
+                                                   (w, h),
+                                                   1,  # 1: all pixels in orig. image included, 0: no black pixels included
+                                                   (w, h))
+        image_undist = cv2.undistort(image, K, camera_np.dist, None, K_new)
+        camera_undist = copy.deepcopy(camera)
+        camera_undist.dist[:] = 0
+        camera_undist.f[0] = K_new[0, 0]
+        camera_undist.f[1] = K_new[1, 1]
+        camera_undist.c[0] = K_new[0, 2]
+        camera_undist.c[1] = K_new[1, 2]
+        # It is possible to crop out some "black parts" of the image by uncommenting below:
+        # x, y, w, h = roi
+        # image_undist = image_undist[y:y+h, x:x+w]
+        # camera_undist.size[0] = w
+        # camera_undist.size[1] = h
         image_undist = numpy_image_to_torch(image_undist)
-        return image_undist, camera_intrinsics_undist
+        return image_undist, camera_undist
 
-    def _warp_PY(self, image, camera_intrinsics):
+    def _warp_PY(self, image, camera):
         # Operates on undistorted images!
         image = torch_image_to_numpy(image)
         h, w = image.shape[:2]
-        camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
-        camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
+        camera_np = copy.deepcopy(camera)
+        camera_np._data = camera_np._data.numpy()
         K = np.zeros((3, 3))
-        K[0, 0], K[1, 1] = camera_intrinsics_np.f[0], camera_intrinsics_np.f[1]
-        K[0, 2], K[1, 2] = camera_intrinsics_np.c[0], camera_intrinsics_np.c[1]
+        K[0, 0], K[1, 1] = camera_np.f[0], camera_np.f[1]
+        K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
         K[2, 2] = 1
 
         # map_x and map_y will contain the pixel coordinates in the original image
         # corresponding to the pixels in the new image.
+
+        # TODO-G: At this point meshgrid is overkill, we only need 4 values
         map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
-        # 1. normalize
+
+        # Find what normalized range the pixels go to
         map_x, map_y = (map_x - K[0, 2])/K[0, 0], \
             (map_y - K[1, 2])/K[1, 1]
-
         # get bounding box and new camera parameters
-        A, B, C, D, K_new = self.PY_bounding_box(
+        A, B, C, D, K_new, new_w, new_h = self.PY_bounding_box(
             map_x[0], map_x[-1], map_y[0], map_y[-1], w, h)
 
-        map_x, map_y = np.meshgrid(np.linspace(A, B, w, dtype=np.float32),
-                                   np.linspace(C, D, h, dtype=np.float32))
-        # 2. tan-warp
+        # 1. Define a grid in normalized PY-space
+        map_x, map_y = np.meshgrid(
+            np.linspace(A, B, new_w, dtype=np.float32),
+            np.linspace(C, D, new_h, dtype=np.float32))
+        # 2. tan-warp to normalized P2-space
         r = np.clip(np.sqrt(map_x**2 + map_y**2), a_min=1.0e-8, a_max=None)
         r = np.tan(r) / r
         map_x, map_y = r * map_x, r * map_y
@@ -270,19 +288,22 @@ class _Dataset(torch.utils.data.Dataset):
 
         # fix camera parameters
 
-        camera_intrinsics_warp = copy.deepcopy(camera_intrinsics)
-        camera_intrinsics_warp.f[0] = K_new[0, 0]
-        camera_intrinsics_warp.f[1] = K_new[1, 1]
-        camera_intrinsics_warp.c[0] = K_new[0, 2]
-        camera_intrinsics_warp.c[1] = K_new[1, 2]
+        camera_warp = copy.deepcopy(camera)
+        camera_warp.f[0] = K_new[0, 0]
+        camera_warp.f[1] = K_new[1, 1]
+        camera_warp.c[0] = K_new[0, 2]
+        camera_warp.c[1] = K_new[1, 2]
+        camera_warp.size[0] = new_w
+        camera_warp.size[1] = new_h
 
-        return image_warp, camera_intrinsics_warp
+        return image_warp, camera_warp
 
     @staticmethod
     def PY_bounding_box(a, b, c, d, w, h):
         # if rho is map P^2 -> PY,
         # finds A,B,C,D so that rho([a,b]x[c,d]) < [A,B]x[C,D]
-        # and calibration parameters that maps [A,B}x[C,D] to [0,w]x[0,h]
+        # and calibration parameters that maps [A,B}x[C,D] to [0,new_w]x[0,new_h]
+        # such that new_w/new_h = (A-B)/(C-D) and new_w*new_h = w*h
 
         x_axis = np.linspace(a, b)
         y_axis = np.linspace(c, d)
@@ -300,24 +321,26 @@ class _Dataset(torch.utils.data.Dataset):
         C = np.min(c*np.arctan(r)/r)
 
         # D
-        r= np.clip(np.sqrt(d**2+x_axis**2), a_min=1.0e-8,a_max=None)
+        r = np.clip(np.sqrt(d**2+x_axis**2), a_min=1.0e-8,a_max=None)
         D = np.min(d*np.arctan(r)/r)
+
+        # Create new width and height with new ratio but with same product
+        # as the earlier in order to preserve number of pixels roughly
+        new_wh_ratio = (B - A) / (D - C)  # proper ratio for PY-img
+        new_h = np.sqrt(w*h/new_wh_ratio)
+        new_w = new_h * new_wh_ratio
+        new_w, new_h = int(new_w), int(new_h)
 
         # calculate calibration parameters
         K = np.zeros((3, 3))
 
-        K[0,0] = (B-A)/w
-        K[0,2] = 0.5*(w-(B+A)/K[0,0])
-        K[1,1] = (D-C)/h
-        K[1,2] = +.5*(h-(C+D)/K[1,1])
-        K[2,2] = 1
+        K[0, 0] = (B-A)/new_w
+        K[0, 2] = 0.5*(new_w-(B+A)/K[0, 0])
+        K[1, 1] = (D-C)/new_h
+        K[1, 2] = +.5*(new_h-(C+D)/K[1, 1])
+        K[2, 2] = 1
 
-        return A,B,C,D,K
-
-
-
-
-
+        return A, B, C, D, K, new_w, new_h
 
     def __getitem__(self, idx):
         if self.conf.two_view:
