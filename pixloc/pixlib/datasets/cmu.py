@@ -379,20 +379,14 @@ class _Dataset(torch.utils.data.Dataset):
         augmented_translation_vector = np.copy(orig_translation_vector)
         # Also initialize the final translation annotation
         augmented_translation_vector = np.copy(orig_translation_vector)
-        # And the 3D points, which are expressed in the camera frame, which will now be rotated...
-        augmented_points3D = np.copy(points3D)
 
         ##### STEP 1: Apply in-plane rotation on pose annotations #####
         augmented_rotation_matrix = np.dot(R_inplane, augmented_rotation_matrix)
         augmented_translation_vector = np.dot(augmented_translation_vector, R_inplane.T)
-        augmented_points3D = points3D..............  # TODO-G: What should be done here?
 
         ##### STEP 2: Apply tilt rotation on pose annotations #####
         augmented_rotation_matrix = np.dot(R_tilt, augmented_rotation_matrix)
         augmented_translation_vector = np.dot(augmented_translation_vector, R_tilt.T)
-
-        augmented_rotation_vector, _ = cv2.Rodrigues(augmented_rotation_matrix)
-
 
         augmented_T_w2cam = Pose.from_Rt(augmented_rotation_matrix, augmented_translation_vector)
         augmented_img = numpy_image_to_torch(augmented_img)
