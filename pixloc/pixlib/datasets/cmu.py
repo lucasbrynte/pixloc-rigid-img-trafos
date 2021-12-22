@@ -238,7 +238,6 @@ class _Dataset(torch.utils.data.Dataset):
         K[0, 0], K[1, 1] = camera_intrinsics_np.f[0], camera_intrinsics_np.f[1]
         K[0, 2], K[1, 2] = camera_intrinsics_np.c[0], camera_intrinsics_np.c[1]
         K[2, 2] = 1
-        camera_intrinsics_warp = copy.deepcopy(camera_intrinsics)  # G-TODO: maybe this needs to be modified (and then the normalize step as well)
 
         # map_x and map_y will contain the pixel coordinates in the original image
         # corresponding to the pixels in the new image.
@@ -249,7 +248,7 @@ class _Dataset(torch.utils.data.Dataset):
 
         # get bounding box and new camera parameters
         A, B, C, D, K_new = self.PY_bounding_box(
-            map_x[0], map_x[-1], map_y[0], map_y[1], w, h)
+            map_x[0], map_x[-1], map_y[0], map_y[-1], w, h)
 
         map_x, map_y = np.meshgrid(np.linspace(A, B, w, dtype=np.float32),
                                    np.linspace(C, D, h, dtype=np.float32))
@@ -264,18 +263,18 @@ class _Dataset(torch.utils.data.Dataset):
         image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)  # TODO-G: the 5 does something...?
         image_warp = numpy_image_to_torch(image_warp)
         # TODO-G: Add mask for black pixels?
-        # mask = np.ones(len(w), len(h))
+        # mask = np.ones(len(w)
         # mask_warp = cv2.remap(mask, map_x, map_y, cv2.INTER_NEAREST)
 
         # mask_warp = mask_warp
 
         # fix camera parameters
-        K_pt = torch.Tensor(K_new)
 
-        camera_intrinsics_warp.f[0] = K_pt[0, 0]
-        camera_intrinsics_warp.f[1] = K_pt[1, 1]
-        camera_intrinsics_warp.c[0] = K_pt[0, 2]
-        camera_intrinsics_warp.c[1] = K_pt[1, 2]
+        camera_intrinsics_warp = copy.deepcopy(camera_intrinsics)
+        camera_intrinsics_warp.f[0] = K_new[0, 0]
+        camera_intrinsics_warp.f[1] = K_new[1, 1]
+        camera_intrinsics_warp.c[0] = K_new[0, 2]
+        camera_intrinsics_warp.c[1] = K_new[1, 2]
 
         return image_warp, camera_intrinsics_warp
 
