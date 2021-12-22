@@ -258,8 +258,8 @@ class _Dataset(torch.utils.data.Dataset):
         r = np.tan(r) / r
         map_x, map_y = r * map_x, r * map_y
         # 3. unnormalize
-        map_x, map_y = K_new[0, 0] * map_x + K_new[0, 2], \
-                K_new[1, 1] * map_y + K_new[1, 2]
+        map_x, map_y = K[0, 0] * map_x + K[0, 2], \
+                K[1, 1] * map_y + K[1, 2]
 
         image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)
         image_warp = numpy_image_to_torch(image_warp)
