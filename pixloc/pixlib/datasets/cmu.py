@@ -146,10 +146,22 @@ class _Dataset(torch.utils.data.Dataset):
         data = read_view(self.conf, path, camera, T, p3D, common_p3D_idx,
                          random=(self.split == 'train'))
         data['index'] = idx
+        if is_reference:
+            valid_projection_tests_data = []
         if self.conf.undistort_images:
+            if is_reference:
+                valid_projection_tests_data.append({
+                    'T_w2cam': data['T_w2cam'],
+                    'camera': data['camera'],
+                })
             data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
         if self.conf.warp_PY_images:
             assert self.conf.undistort_images
+            if is_reference:
+                valid_projection_tests_data.append({
+                    'T_w2cam': data['T_w2cam'],
+                    'camera': data['camera'],
+                })
             data['image'], data['camera'] = self._warp_PY(data['image'], data['camera'])
         assert (tuple(data['camera'].size.numpy())
                 == data['image'].shape[1:][::-1])
@@ -158,7 +170,10 @@ class _Dataset(torch.utils.data.Dataset):
             assert self.conf.undistort_images
             inplane_angle, tilt_angle, tilt_axis = self._sample_homography_augmentation_parameters()
             if is_reference:
-                T_w2cam_old = data['T_w2cam']
+                valid_projection_tests_data.append({
+                    'T_w2cam': data['T_w2cam'],
+                    'camera': data['camera'],
+                })
             data['image'], data['T_w2cam'] = self._rotational_homography_augmentation(
                 data['image'],
                 data['T_w2cam'],
@@ -177,10 +192,10 @@ class _Dataset(torch.utils.data.Dataset):
                 obs = self._determine_valid_projections(obs_orig, p3D, data['camera'], data['T_w2cam'])
             else:
                 obs = obs_orig
-            if self.conf.use_rotational_homography_augmentation:
-                # If we have performed homography augmentation, we also want to filter points such that black areas are omitted, i.e. regions that are "valid" now, but were not before the augmentation was carried out.
-                obs_pre_aug = self._determine_valid_projections(obs_orig, p3D, camera_old, T_w2cam_old)
-                obs = np.intersect1d(obs, obs_pre_aug)
+            # If we have performed any kind of camera modifications resulting in shrinking / expansion, we want to filter points in every step, e.g. such that black areas are omitted, i.e. regions that are "valid" now, but were not valid at an earlier stage.
+            for d in valid_projection_tests_data:
+                new_obs = self._determine_valid_projections(obs_orig, p3D, d['camera'], d['T_w2cam'])
+                obs = np.intersect1d(obs, new_obs)
             num_diff = self.conf.max_num_points3D - len(obs)
             if num_diff < 0:
                 obs = np.random.choice(obs, self.conf.max_num_points3D)
