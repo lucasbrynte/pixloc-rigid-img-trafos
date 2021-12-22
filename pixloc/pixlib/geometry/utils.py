@@ -34,7 +34,8 @@ def from_homogeneous(points):
 
 def radial_function(t):
     # calculates arctan(t)/t
-    return torch.arctan(t) / torch.clamp(t, min=1.0e-8)
+    t= torch.clamp(t,min=1.0e-8)
+    return torch.arctan(t) / t
 
 @torch.jit.script
 def undistort_points(pts, dist):
@@ -77,7 +78,7 @@ def undistort_points(pts, dist):
             # I do not think we need to take care of valid here, since distortion model is valid on all of R^2?
 
 
-        if ndist > 2:  # TODO-G: How is this handled when using the NaN-thing above
+        if ndist > 2:  
             
             p12 = dist[..., 2:]
             p21 = p12.flip(-1)
@@ -96,6 +97,12 @@ def J_undistort_points(pts, dist):
     J_cross = torch.zeros_like(pts)
     if ndist > 0:
         k1, k2 = dist[..., :2].split(1, -1)
+
+        if (not k1.isnan().all()) and k1.isnan().any():
+            raise ValueError("Mixture of finite and NaN distortion parameters")
+        if k1.isnan().any and ndist>2:
+            raise ValueError("Cannot use more than two parameter for NaN distortion parameters")
+            
         if not k1.isnan().any():
             r2 = torch.sum(pts**2, -1, keepdim=True)
             uv = torch.prod(pts, -1, keepdim=True)
