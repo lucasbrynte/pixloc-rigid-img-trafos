@@ -56,7 +56,7 @@ def undistort_points(pts, dist):
             raise ValueError("Cannot use more than two parameter for NaN distortion parameters")
             
         r2 = torch.sum(pts**2, -1, keepdim=True)
-        if not k1.isnan().any():  #
+        if not k1.isnan().any() and not k1.isnan().any: # if in arctan case, no tangential distortion needed:  #
             radial = k1*r2 + k2*r2**2
             undist = undist + pts * radial
 
@@ -100,8 +100,6 @@ def J_undistort_points(pts, dist):
 
         if (not k1.isnan().all()) and k1.isnan().any():
             raise ValueError("Mixture of finite and NaN distortion parameters")
-        if k1.isnan().any and ndist>2:
-            raise ValueError("Cannot use more than two parameter for NaN distortion parameters")
             
         if not k1.isnan().any():
             r2 = torch.sum(pts**2, -1, keepdim=True)
@@ -125,7 +123,7 @@ def J_undistort_points(pts, dist):
             J_diag = f*J_diag + g * norm_pts**2
             J_cross = g*torch.prod(pts, -1, keepdim=True)
 
-        if ndist > 2:
+        if ndist >2 and not k1.isnan().any: # if in arctan case, no tangential distortion needed
             p12 = dist[..., 2:]
             p21 = p12.flip(-1)
             J_diag += 2*p12*pts.flip(-1) + 6*p21*pts
