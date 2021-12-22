@@ -23,7 +23,7 @@ def torch_image_to_numpy(image):
     assert len(image.shape) == 3
     assert image.dtype == torch.float32
     image = image.permute(1, 2, 0).numpy() * 255. # CxHxW to HxWxC
-    assert image.dtype == torch.float32
+    assert image.dtype == np.float32  
     return image
 
 

@@ -46,7 +46,7 @@ class CMU(BaseDataset):
         'optimal_crop': True,
         'seed': 0,
 
-        'undistort_images': True,
+        'undistort_images': False,
         'warp_PY_images': False,
         'use_rotational_homography_augmentation': False,
         'max_inplane_angle': 0,
@@ -280,7 +280,7 @@ class _Dataset(torch.utils.data.Dataset):
         
         return image_warp, camera_intrinsics_warp
     
-    @static_method
+    @staticmethod
     def PY_bounding_box(a,b,c,d,w,h):
         # if rho is map P^2 -> PY,
         # finds A,B,C,D so that rho([a,b]x[c,d]) < [A,B]x[C,D]
