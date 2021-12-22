@@ -371,6 +371,7 @@ if __name__ == '__main__':
     parser.add_argument('--distributed', action='store_true')
     parser.add_argument('dotlist', nargs='*')
     parser.add_argument('--undistort-images', action='store_true')
+    parser.add_argument('--warp-PY-images', action='store_true')
     parser.add_argument('--use-rotational-homography-augmentation', action='store_true')
     parser.add_argument('--max-inplane-angle', type=float, default=0)
     parser.add_argument('--max-tilt-angle', type=float, default=0)

@@ -207,17 +207,45 @@ class _Dataset(torch.utils.data.Dataset):
         K[0, 0], K[1, 1] = camera_intrinsics_np.fx, camera_intrinsics_np.fy
         K[0, 2], K[1, 2] = camera_intrinsics_np.cx, camera_intrinsics_np.cy
         K[2, 2] = 1
+        # TODO-G perhaps change K to a new calibration to get rid of black pixels?
+        # See cv2.getOptimalNewCameraMatrix
         image_undist = cv2.undistort(image, K, camera_intrinsics_np.dist, None, K)
         camera_intrinsics_undist = copy.deepcopy(camera_intrinsics)
         camera_intrinsics_undist.dist[:] = 0
-        image = numpy_image_to_torch(image)
+        image_undist = numpy_image_to_torch(image_undist)
         return image_undist, camera_intrinsics_undist
 
     def _warp_PY(self, image, camera_intrinsics):
-        # TODO-G: Implement warping of input images, perhaps with cv2?
-        # Need to decide whether to do this on the original or the undistorted images.
-        # In the first case, create some type of assertion that not both are done.
-        return NotImplementedError()
+        # Operates on undistorted images!
+        image = torch_image_to_numpy(image)
+        h, w = image.shape[:2]
+        camera_intrinsics_np = copy.deepcopy(camera_intrinsics)
+        camera_intrinsics_np._data = camera_intrinsics_np._data.numpy()
+        K = np.zeros((3, 3))
+        K[0, 0], K[1, 1] = camera_intrinsics_np.fx, camera_intrinsics_np.fy
+        K[0, 2], K[1, 2] = camera_intrinsics_np.cx, camera_intrinsics_np.cy
+        K[2, 2] = 1
+        camera_intrinsics_warp = copy.deepcopy(camera_intrinsics)  # G-TODO: maybe this needs to be modified (and then the normalize step as well)
+
+        # map_x and map_y will contain the pixel coordinates in the original image
+        # corresponding to the pixels in the new image.
+        map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
+        # 1. normalize
+        map_x, map_y = (map_x - K[0, 2])/K[0, 0], \
+                (map_y - K[1, 2])/K[1, 1]
+        # 2. tan-warp
+        r = np.clip(np.sqrt(map_x**2 + map_y**2), a_min=1.0e-8, a_max=None)
+        r = np.tan(r) / r
+        map_x, map_y = r * map_x, r * map_y
+        # 3. unnormalize
+        map_x, map_y = K[0, 0] * map_x + K[0, 2], \
+                K[1, 1] * map_y + K[1, 2]
+
+        image_warp = cv2.remap(image, map_x, map_y, cv.INTER_LINEAR)
+        image_warp = numpy_image_to_torch(image_warp)
+        # TODO-G: Add mask for black pixels?
+        
+        return image_warp, camera_intrinsics_warp
 
     def __getitem__(self, idx):
         if self.conf.two_view:
