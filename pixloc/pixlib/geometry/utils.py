@@ -41,14 +41,21 @@ def undistort_points(pts, dist):
     '''Undistort normalized 2D coordinates
        and check for validity of the distortion model.
     '''
+    
+    
     dist = dist.unsqueeze(-2)  # add point dimension
     ndist = dist.shape[-1]
     undist = pts
     valid = torch.ones(pts.shape[:-1], device=pts.device, dtype=torch.bool)
     if ndist > 0:
         k1, k2 = dist[..., :2].split(1, -1)
+        if (not k1.isnan().all()) and k1.isnan().any():
+            raise ValueError("Mixture of finite and NaN distortion parameters")
+        if k1.isnan().any and ndist>2:
+            raise ValueError("Cannot use more than two parameter for NaN distortion parameters")
+            
         r2 = torch.sum(pts**2, -1, keepdim=True)
-        if not k1.isnan().any():  # TODO-G: do we want this check to check only one k1 or all? or individually?
+        if not k1.isnan().any():  #
             radial = k1*r2 + k2*r2**2
             undist = undist + pts * radial
 
@@ -71,6 +78,7 @@ def undistort_points(pts, dist):
 
 
         if ndist > 2:  # TODO-G: How is this handled when using the NaN-thing above
+            
             p12 = dist[..., 2:]
             p21 = p12.flip(-1)
             uv = torch.prod(pts, -1, keepdim=True)
