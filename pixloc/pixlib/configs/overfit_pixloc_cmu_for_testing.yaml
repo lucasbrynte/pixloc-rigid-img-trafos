@@ -13,6 +13,10 @@ data:
   num_workers: 6
   seed: 1
   undistort_images: true
+  warp_PY_images: false
+  use_rotational_homography_augmentation: true
+  max_inplane_angle: 10
+  max_tilt_angle: 30
 model:
   name: two_view_refiner
   success_thresh: 3

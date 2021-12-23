@@ -204,7 +204,6 @@ class _Dataset(torch.utils.data.Dataset):
                 add = np.random.choice(
                     np.delete(np.arange(len(p3D)), obs), num_diff)
                 obs = np.r_[obs, add]
-            # NOTE: Why would * operation work? p3D[obs] should be Nx3, and T_w2cam should be 4x4.
             data['points3D'] = data['T_w2cam'] * p3D[obs]
         return data
 

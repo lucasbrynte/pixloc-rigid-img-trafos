@@ -42,8 +42,8 @@ def undistort_points(pts, dist):
     '''Undistort normalized 2D coordinates
        and check for validity of the distortion model.
     '''
-    
-    
+
+
     dist = dist.unsqueeze(-2)  # add point dimension
     ndist = dist.shape[-1]
     undist = pts
@@ -52,11 +52,9 @@ def undistort_points(pts, dist):
         k1, k2 = dist[..., :2].split(1, -1)
         if (not k1.isnan().all()) and k1.isnan().any():
             raise ValueError("Mixture of finite and NaN distortion parameters")
-        if k1.isnan().any() and ndist>2:
-            raise ValueError("Cannot use more than two parameter for NaN distortion parameters")
-            
+
         r2 = torch.sum(pts**2, -1, keepdim=True)
-        if not k1.isnan().any(): # if in arctan case, no tangential distortion needed:  #
+        if not k1.isnan().any():
             radial = k1*r2 + k2*r2**2
             undist = undist + pts * radial
 
@@ -77,9 +75,7 @@ def undistort_points(pts, dist):
 
             # I do not think we need to take care of valid here, since distortion model is valid on all of R^2?
 
-
-        if ndist > 2:  
-            
+        if ndist >2 and not k1.isnan().any(): # if in arctan case, no tangential distortion needed
             p12 = dist[..., 2:]
             p21 = p12.flip(-1)
             uv = torch.prod(pts, -1, keepdim=True)
@@ -100,7 +96,7 @@ def J_undistort_points(pts, dist):
 
         if (not k1.isnan().all()) and k1.isnan().any():
             raise ValueError("Mixture of finite and NaN distortion parameters")
-            
+
         if not k1.isnan().any():
             r2 = torch.sum(pts**2, -1, keepdim=True)
             uv = torch.prod(pts, -1, keepdim=True)
