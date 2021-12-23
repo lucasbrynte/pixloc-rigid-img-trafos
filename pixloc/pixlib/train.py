@@ -143,10 +143,11 @@ def training(rank, conf, output_dir, args):
         writer = SummaryWriter(log_dir=str(output_dir))
 
     data_conf = copy.deepcopy(conf.data)
-    data_conf.undistort_images = args.undistort_images
-    data_conf.use_rotational_homography_augmentation = args.use_rotational_homography_augmentation
-    data_conf.max_inplane_angle = args.max_inplane_angle
-    data_conf.max_tilt_angle = args.max_tilt_angle
+    # Specify these in config file instead:
+    # data_conf.undistort_images = args.undistort_images
+    # data_conf.use_rotational_homography_augmentation = args.use_rotational_homography_augmentation
+    # data_conf.max_inplane_angle = args.max_inplane_angle
+    # data_conf.max_tilt_angle = args.max_tilt_angle
 
     if args.distributed:
         logger.info(f'Training in distributed mode with {args.n_gpus} GPUs')
@@ -370,11 +371,12 @@ if __name__ == '__main__':
     parser.add_argument('--restore', action='store_true')
     parser.add_argument('--distributed', action='store_true')
     parser.add_argument('dotlist', nargs='*')
-    parser.add_argument('--undistort-images', action='store_true')
-    parser.add_argument('--warp-PY-images', action='store_true')
-    parser.add_argument('--use-rotational-homography-augmentation', action='store_true')
-    parser.add_argument('--max-inplane-angle', type=float, default=0)
-    parser.add_argument('--max-tilt-angle', type=float, default=0)
+    # There are instead specified in config file:
+    # parser.add_argument('--undistort-images', action='store_true')
+    # parser.add_argument('--warp-PY-images', action='store_true')
+    # parser.add_argument('--use-rotational-homography-augmentation', action='store_true')
+    # parser.add_argument('--max-inplane-angle', type=float, default=0)
+    # parser.add_argument('--max-tilt-angle', type=float, default=0)
     args = parser.parse_intermixed_args()
 
     logger.info(f'Starting experiment {args.experiment}')
