@@ -178,5 +178,6 @@ class BaseDataset(metaclass=ABCMeta):
             len(dataset) if split == 'train' else self.conf.batch_size)
         num_workers = self.conf.get('num_workers', self.conf.batch_size)
         return DataLoader(dataset, batch_size=self.conf.batch_size,
-                          pin_memory=True, num_workers=num_workers,
+                          pin_memory=True, collate_fn=collate,
+                          num_workers=num_workers,
                           sampler=sampler, worker_init_fn=worker_init_fn)
