@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 CAMERAS = '''c0 OPENCV 1024 768 868.993378 866.063001 525.942323 420.042529 -0.399431 0.188924 0.000153 0.000571
 c1 OPENCV 1024 768 873.382641 876.489513 529.324138 397.272397 -0.397066 0.181925 0.000176 -0.000579'''
 
+# TODO-G: Can the conf-parameter train_num_per_slice be used to control data set size? Or what does it mean?
 
 class CMU(BaseDataset):
     default_conf = {
@@ -243,7 +244,6 @@ class _Dataset(torch.utils.data.Dataset):
         return image_undist, camera_undist
 
     def _warp_PY(self, image, camera):
-        # TODO-G: Why are the plots of these warps shifted downwards (more black pixels at the top)?
         # Operates on undistorted images!
         image = torch_image_to_numpy(image)
         h, w = image.shape[:2]
@@ -254,23 +254,22 @@ class _Dataset(torch.utils.data.Dataset):
         K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
         K[2, 2] = 1
 
-        # map_x and map_y will contain the pixel coordinates in the original image
-        # corresponding to the pixels in the new image.
-
-        # TODO-G: At this point meshgrid is overkill, we only need 4 values
-        map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
-
         # Find what normalized range the pixels go to
-        map_x, map_y = (map_x - K[0, 2])/K[0, 0], \
-            (map_y - K[1, 2])/K[1, 1]
+        extreme_x = np.array([0.0, w])
+        extreme_y = np.array([0.0, h])
+        extreme_x, extreme_y = (extreme_x - K[0, 2])/K[0, 0], \
+            (extreme_y - K[1, 2])/K[1, 1]
         # get bounding box and new camera parameters
-        A, B, C, D, K_new, new_w, new_h = self.PY_bounding_box(
-            map_x[0], map_x[-1], map_y[0], map_y[-1], w, h)
+        A, B, C, D, K_new = self.PY_bounding_box(
+            extreme_x[0], extreme_x[-1], extreme_y[0], extreme_y[-1], w, h)
 
+        # map_x and map_y will contain the pixel coordinates
+        # in the original image
+        # corresponding to the pixels in the new image.
         # 1. Define a grid in normalized PY-space
         map_x, map_y = np.meshgrid(
-            np.linspace(A, B, new_w, dtype=np.float32),
-            np.linspace(C, D, new_h, dtype=np.float32))
+            np.linspace(A, B, w, dtype=np.float32),
+            np.linspace(C, D, h, dtype=np.float32))
         # 2. tan-warp to normalized P2-space
         r = np.clip(np.sqrt(map_x**2 + map_y**2), a_min=1.0e-8, a_max=None)
         r = np.tan(r) / r
@@ -281,21 +280,14 @@ class _Dataset(torch.utils.data.Dataset):
 
         image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)
         image_warp = numpy_image_to_torch(image_warp)
-        # TODO-G: Add mask for black pixels? Seems not to be necessary
-        # mask = np.ones(len(w)
-        # mask_warp = cv2.remap(mask, map_x, map_y, cv2.INTER_NEAREST)
-
-        # mask_warp = mask_warp
 
         # fix camera parameters
-
         camera_warp = copy.deepcopy(camera)
         camera_warp.f[0] = K_new[0, 0]
         camera_warp.f[1] = K_new[1, 1]
         camera_warp.c[0] = K_new[0, 2]
         camera_warp.c[1] = K_new[1, 2]
-        camera_warp.size[0] = new_w
-        camera_warp.size[1] = new_h
+        camera_warp.dist[:2] = np.nan  # specifies special arctan "distortion"
 
         return image_warp, camera_warp
 
@@ -303,45 +295,49 @@ class _Dataset(torch.utils.data.Dataset):
     def PY_bounding_box(a, b, c, d, w, h):
         # if rho is map P^2 -> PY,
         # finds A,B,C,D so that rho([a,b]x[c,d]) < [A,B]x[C,D]
-        # and calibration parameters that maps [A,B}x[C,D] to [0,new_w]x[0,new_h]
-        # such that new_w/new_h = (A-B)/(C-D) and new_w*new_h = w*h
-
-        x_axis = np.linspace(a, b)
-        y_axis = np.linspace(c, d)
+        # and calibration parameters that maps [A,B]x[C,D] to [0,w]x[0,h]
 
         # A
-        r = np.clip(np.sqrt(a**2+y_axis**2), a_min=1.0e-8, a_max=None)
-        A = np.min(a*np.arctan(r)/r)
+        # max arctan(r)/r value will be on x axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(a), a_min=1.0e-8, a_max=None)
+        A = a * np.arctan(r)/r
 
         # B
-        r = np.clip(np.sqrt(b**2+y_axis**2), a_min=1.0e-8, a_max=None)
-        B = np.max(b*np.arctan(r)/r)
+        # max arctan(r)/r value will be on x axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(b), a_min=1.0e-8, a_max=None)
+        B = b * np.arctan(r)/r
 
         # C
-        r = np.clip(np.sqrt(c**2+x_axis**2), a_min=1.0e-8, a_max=None)
-        C = np.min(c*np.arctan(r)/r)
+        # max arctan(r)/r value will be on y axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(c), a_min=1.0e-8, a_max=None)
+        C = c * np.arctan(r)/r
 
         # D
-        r = np.clip(np.sqrt(d**2+x_axis**2), a_min=1.0e-8,a_max=None)
-        D = np.min(d*np.arctan(r)/r)
-
-        # Create new width and height with new ratio but with same product
-        # as the earlier in order to preserve number of pixels roughly
-        new_wh_ratio = (B - A) / (D - C)  # proper ratio for PY-img
-        new_h = np.sqrt(w*h/new_wh_ratio)
-        new_w = new_h * new_wh_ratio
-        new_w, new_h = int(new_w), int(new_h)
+        # max arctan(r)/r value will be on y axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(d), a_min=1.0e-8, a_max=None)
+        D = d * np.arctan(r)/r
 
         # calculate calibration parameters
         K = np.zeros((3, 3))
 
-        K[0, 0] = (B-A)/new_w
-        K[0, 2] = 0.5*(new_w-(B+A)/K[0, 0])
-        K[1, 1] = (D-C)/new_h
-        K[1, 2] = +.5*(new_h-(C+D)/K[1, 1])
+        # TODO-G: check these (here I ignored half-pixels etc.):
+        K[0, 0] = w/(B-A)
+        K[0, 2] = -A * K[0, 0]
+        K[1, 1] = h/(D-C)
+        K[1, 2] = -C * K[1, 1]
         K[2, 2] = 1
+        # earlier values that seem to have incorrect units:
+        # K[0, 0] = (B-A)/w
+        # K[0, 2] = 0.5*(w-(B+A)/K[0, 0])
+        # K[1, 1] = (D-C)/h
+        # K[1, 2] = 0.5*(h-(C+D)/K[1, 1])
+        # K[2, 2] = 1
 
-        return A, B, C, D, K, new_w, new_h
+        return A, B, C, D, K
 
     def __getitem__(self, idx):
         if self.conf.two_view:
