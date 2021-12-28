@@ -368,7 +368,7 @@ class _Dataset(torch.utils.data.Dataset):
         inplane_angle = np.random.uniform(low=-self.conf.max_inplane_angle, high=self.conf.max_inplane_angle)
         tilt_angle = np.random.uniform(low=-self.conf.max_tilt_angle, high=self.conf.max_tilt_angle)
         tmp_inplane_alpha = np.random.uniform(low=0, high=2*np.pi)
-        tilt_axis = np.array([np.cos(tmp_inplane_alpha), np.sin(tmp_inplane_alpha)])
+        tilt_axis = np.array([np.cos(tmp_inplane_alpha), np.sin(tmp_inplane_alpha)], dtype=np.float32)
         return inplane_angle, tilt_angle, tilt_axis
 
     def _rotational_homography_augmentation(
@@ -445,13 +445,13 @@ class _Dataset(torch.utils.data.Dataset):
                 R_inplane_2d_mat = cv2.getRotationMatrix2D(np.array([cx, cy]), -inplane_angle, 1) # Last argument is the scaling factor of the 2x3 similarity transformation matrix.
 
         # Express in-plane rotation with 3D rotation vector / matrix. Rotation is around the z-axis in the camera coordinate system.
-        inplane_rotation_vector = np.zeros((3,))
+        inplane_rotation_vector = np.zeros((3,), dtype=np.float32)
         inplane_rotation_vector[2] = inplane_angle / 180. * np.pi
         R_inplane, _ = cv2.Rodrigues(inplane_rotation_vector)
 
         # Express tilt rotation with 3D rotation vector / matrix. Rotation is around an axis in the principal plane z = 0.
         assert tilt_axis.shape == (2,)
-        tilt_axis = np.concatenate([tilt_axis, np.zeros((1,))], axis=0) # 3D lift to the plane z = 0
+        tilt_axis = np.concatenate([tilt_axis, np.zeros((1,), dtype=tilt_axis.dtype)], axis=0) # 3D lift to the plane z = 0
         assert tilt_axis.shape == (3,)
 
         R_tilt, _ = cv2.Rodrigues(tilt_axis * tilt_angle / 180. * np.pi)
@@ -462,6 +462,7 @@ class _Dataset(torch.utils.data.Dataset):
         assert K.shape == (3, 3)
         H_tilt = K @ R_tilt @ np.linalg.inv(K)
 
+        # TODO-G: Does this rotate inplane around top left pixel instead of principal point?
         # Combine everything into a single homography warping:
         H = H_tilt @ np.concatenate([R_inplane_2d_mat, np.array([[0, 0, 1]])], axis=0)
         assert H.shape == (3, 3)
