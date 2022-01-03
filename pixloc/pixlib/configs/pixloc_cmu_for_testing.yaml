@@ -9,10 +9,10 @@ data:
   resize_by: min
   crop: 720
   optimal_crop: false
-  batch_size: 3
-  num_workers: 4
-  seed: 1
   # Set the below in the slurm job script instead:
+  # seed: 1
+  # batch_size: 3
+  # num_workers: 4
   # undistort_images: true
   # warp_PY_images: false
   # use_rotational_homography_augmentation: true
@@ -46,7 +46,7 @@ model:
     damping:
       type: constant
 train:
-  seed: 0
+  # seed: 0
   epochs: 200
   log_every_iter: 500
   eval_every_iter: 500

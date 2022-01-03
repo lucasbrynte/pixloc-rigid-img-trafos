@@ -53,6 +53,8 @@ class CMU(BaseDataset):
         'max_inplane_angle': 0,
         'max_tilt_angle': 0,
 
+        'proportion_of_data_used': -1.0,
+
         'max_num_points3D': 512,
         'force_num_points3D': False,
     }
@@ -115,13 +117,31 @@ class _Dataset(torch.utils.data.Dataset):
                     pairs &= (info['query_to_ref_distance_matrix']
                               < self.conf.max_baseline)
                 pairs = np.stack(np.where(pairs), -1)
-                if len(pairs) > num:
+                # Subsample dataset:
+                if self.conf['proportion_of_data_used'] < 1 and \
+                   self.conf['proportion_of_data_used'] > 0:
+                    data_subset_num = int(np.round(
+                        self.conf['proportion_of_data_used'] * len(pairs)
+                    ))
+                    # Always use same subset of data, so fixed seed
+                    subset = np.random.RandomState(2022).choice(
+                        len(pairs), data_subset_num, replace=False)
+                    pairs = pairs[subset]
+                # Sample `num` pairs to use in this epoch:
+                if len(pairs) >= num:
                     selected = np.random.RandomState(seed).choice(
                         len(pairs), num, replace=False)
                     pairs = pairs[selected]
+                else:
+                    logger.warning(
+                        f"Number of pairs ({len(pairs)}) found was lower than {num}."
+                    )
                 pairs = [(slice_, i, j, mat[i, j]) for i, j in pairs]
                 self.items.extend(pairs)
             else:
+                if self.conf['proportion_of_data_used'] < 1 and \
+                   self.conf['proportion_of_data_used'] > 0:
+                    raise NotImplementedError()
                 ids = np.arange(len(self.images[slice_]))
                 if len(ids) > num:
                     ids = np.random.RandomState(seed).choice(
