@@ -116,17 +116,18 @@ class _Dataset(torch.utils.data.Dataset):
                 if self.conf.max_baseline:
                     pairs &= (info['query_to_ref_distance_matrix']
                               < self.conf.max_baseline)
-                pairs = np.stack(np.where(pairs), -1)
-                # Subsample dataset:
+                # Subsample the set of query images:
                 if self.conf['proportion_of_data_used'] < 1 and \
                    self.conf['proportion_of_data_used'] > 0:
+                    nbr_queries = pairs.shape[0]
                     data_subset_num = int(np.round(
-                        self.conf['proportion_of_data_used'] * len(pairs)
+                        self.conf['proportion_of_data_used'] * nbr_queries
                     ))
                     # Always use same subset of data, so fixed seed
                     subset = np.random.RandomState(2022).choice(
-                        len(pairs), data_subset_num, replace=False)
-                    pairs = pairs[subset]
+                        nbr_queries, data_subset_num, replace=False)
+                    pairs = pairs[subset, :]
+                pairs = np.stack(np.where(pairs), -1)
                 # Sample `num` pairs to use in this epoch:
                 if len(pairs) >= num:
                     selected = np.random.RandomState(seed).choice(
