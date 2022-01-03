@@ -1,4 +1,6 @@
 datasets/
+datasets.zip
+batch_outputs/
 outputs/
 *.mp4
 lsf*

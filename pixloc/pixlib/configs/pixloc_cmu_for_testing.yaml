@@ -10,7 +10,7 @@ data:
   crop: 720
   optimal_crop: false
   batch_size: 3
-  num_workers: 8
+  num_workers: 4
   seed: 1
   # Set the below in the slurm job script instead:
   # undistort_images: true
@@ -47,8 +47,8 @@ model:
       type: constant
 train:
   seed: 0
-  epochs: 20
-  log_every_iter: 50
+  epochs: 200
+  log_every_iter: 500
   eval_every_iter: 500
   dataset_callback_fn: sample_new_items
   lr: 1.0e-05
