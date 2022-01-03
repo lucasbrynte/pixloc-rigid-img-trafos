@@ -124,9 +124,10 @@ class _Dataset(torch.utils.data.Dataset):
                         self.conf['proportion_of_data_used'] * nbr_queries
                     ))
                     # Always use same subset of data, so fixed seed
-                    subset = np.random.RandomState(2022).choice(
-                        nbr_queries, data_subset_num, replace=False)
-                    pairs = pairs[subset, :]
+                    subset_complement = np.random.RandomState(2022).choice(
+                        nbr_queries, nbr_queries - data_subset_num, replace=False)
+                    # Set the subset complement to have no matches among the reference image
+                    pairs[subset_complement, :] = False
                 pairs = np.stack(np.where(pairs), -1)
                 # Sample `num` pairs to use in this epoch:
                 if len(pairs) >= num:
