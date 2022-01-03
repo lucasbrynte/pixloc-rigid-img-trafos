@@ -175,6 +175,7 @@ class _Dataset(torch.utils.data.Dataset):
                     'T_w2cam': data['T_w2cam'],
                     'camera': data['camera'],
                 })
+                # TODO-G Resample augmentation if too few 3D points?
             data['image'], data['T_w2cam'] = self._rotational_homography_augmentation(
                 data['image'],
                 data['T_w2cam'],
@@ -462,7 +463,6 @@ class _Dataset(torch.utils.data.Dataset):
         assert K.shape == (3, 3)
         H_tilt = K @ R_tilt @ np.linalg.inv(K)
 
-        # TODO-G: Does this rotate inplane around top left pixel instead of principal point?
         # Combine everything into a single homography warping:
         H = H_tilt @ np.concatenate([R_inplane_2d_mat, np.array([[0, 0, 1]])], axis=0)
         assert H.shape == (3, 3)
