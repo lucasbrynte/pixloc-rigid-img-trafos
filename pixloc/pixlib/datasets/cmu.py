@@ -127,7 +127,7 @@ class _Dataset(torch.utils.data.Dataset):
                     subset_complement = np.random.RandomState(2022).choice(
                         nbr_queries, nbr_queries - data_subset_num, replace=False)
                     # Set the subset complement to have no matches among the reference image
-                    pairs[self.subset_complement, :] = False
+                    pairs[subset_complement, :] = False
                 pairs = np.stack(np.where(pairs), -1)
                 # Sample `num` pairs to use in this epoch:
                 if len(pairs) >= num:
@@ -178,6 +178,17 @@ class _Dataset(torch.utils.data.Dataset):
                     'camera': data['camera'],
                 })
             data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
+        if self.conf.warp_PY_images:
+            assert self.conf.undistort_images
+            if is_reference:
+                valid_projection_tests_data.append({
+                    'T_w2cam': data['T_w2cam'],
+                    'camera': data['camera'],
+                })
+            data['image'], data['camera'] = self._warp_PY(data['image'], data['camera'])
+        assert (tuple(data['camera'].size.numpy())
+                == data['image'].shape[1:][::-1])
+
         if self.conf.use_rotational_homography_augmentation:
             assert self.conf.undistort_images
             inplane_angle, tilt_angle, tilt_axis = self._sample_homography_augmentation_parameters()
@@ -198,16 +209,6 @@ class _Dataset(torch.utils.data.Dataset):
             data['inplane_angle'] = inplane_angle
             data['tilt_angle'] = tilt_angle
             data['tilt_axis'] = tilt_axis
-        if self.conf.warp_PY_images:
-            assert self.conf.undistort_images
-            if is_reference:
-                valid_projection_tests_data.append({
-                    'T_w2cam': data['T_w2cam'],
-                    'camera': data['camera'],
-                })
-            data['image'], data['camera'] = self._warp_PY(data['image'], data['camera'])
-        assert (tuple(data['camera'].size.numpy())
-                == data['image'].shape[1:][::-1])
 
         if is_reference:
             obs_orig = self.info[slice_]['p3D_observed'][idx]
