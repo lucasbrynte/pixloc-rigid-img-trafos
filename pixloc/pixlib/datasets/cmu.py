@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 CAMERAS = '''c0 OPENCV 1024 768 868.993378 866.063001 525.942323 420.042529 -0.399431 0.188924 0.000153 0.000571
 c1 OPENCV 1024 768 873.382641 876.489513 529.324138 397.272397 -0.397066 0.181925 0.000176 -0.000579'''
 
-# TODO-G: Can the conf-parameter train_num_per_slice be used to control data set size? Or what does it mean?
 
 class CMU(BaseDataset):
     default_conf = {
@@ -179,7 +178,7 @@ class _Dataset(torch.utils.data.Dataset):
                 })
             data['image'], data['camera'] = self._undistort(data['image'], data['camera'])
 
-        if self.conf.use_rotational_homography_augmentation:
+        if (self.split == 'train') and self.conf.use_rotational_homography_augmentation:
             assert self.conf.undistort_images
             inplane_angle, tilt_angle, tilt_axis = self._sample_homography_augmentation_parameters()
             if is_reference:
