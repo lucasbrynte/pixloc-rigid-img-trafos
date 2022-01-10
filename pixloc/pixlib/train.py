@@ -30,6 +30,7 @@ from .. import logger
 default_train_conf = {
     'seed': '???',  # training seed
     'epochs': 1,  # number of epochs
+    'nbr_iter': 100000,  # max number of iterations
     'optimizer': 'adam',  # name of optimizer in [adam, sgd, rmsprop]
     'opt_regexp': None,  # regular expression to filter parameters to optimize
     'optimizer_options': {},  # optional arguments passed to the optimizer
@@ -243,7 +244,8 @@ def training(rank, conf, output_dir, args):
                     OmegaConf.to_yaml(conf))
     losses_ = None
 
-    while epoch < conf.train.epochs and not stop:
+    tot_it = 0
+    while epoch < conf.train.epochs and tot_it < conf.train.nbr_iter and not stop:
         if rank == 0:
             logger.info(f'Starting epoch {epoch}')
         set_seed(conf.train.seed + epoch)
