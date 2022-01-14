@@ -2,8 +2,8 @@ import torch
 
 
 def masked_mean(x, mask, dim):
-    mask = mask.float()
-    return (mask * x).sum(dim) / mask.sum(dim).clamp(min=1)
+    x[~mask] = 0.0
+    return x.sum(dim) / mask.float().sum(dim).clamp(min=1)
 
 
 def checkpointed(cls, do=True):
