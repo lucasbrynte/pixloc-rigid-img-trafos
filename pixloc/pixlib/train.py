@@ -303,7 +303,7 @@ def training(rank, conf, output_dir, args):
                         newline = "\n"
                         logger.warning(f'nan-loss found: {k}{newline}'
                                        f'training query-ref pairs:{newline}'
-                                       f'{newline.join(train_loader.dataset.items)}')
+                                       f'{newline.join(str(i) for i in sorted(train_loader.dataset.items))}')
 
                     losses[k] = torch.mean(losses[k]).item()
 
