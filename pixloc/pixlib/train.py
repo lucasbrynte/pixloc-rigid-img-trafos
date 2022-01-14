@@ -30,7 +30,7 @@ from .. import logger
 default_train_conf = {
     'seed': '???',  # training seed
     'epochs': 1,  # number of epochs
-    'nbr_iter': 100000,  # max number of iterations
+    'nbr_iter': 1,  # max number of iterations
     'optimizer': 'adam',  # name of optimizer in [adam, sgd, rmsprop]
     'opt_regexp': None,  # regular expression to filter parameters to optimize
     'optimizer_options': {},  # optional arguments passed to the optimizer
@@ -298,7 +298,15 @@ def training(rank, conf, output_dir, args):
                         losses[k] = losses[k].sum()
                         torch.distributed.reduce(losses[k], dst=0)
                         losses[k] /= (train_loader.batch_size * args.n_gpus)
+
+                    if torch.any(torch.isnan(losses[k]):
+                        logger.warning(f'nan-loss found: {k}\n'
+                                       f'training query-ref pairs:\n'
+                                       f'{"\n  ".join(train_loader.dataset.items)}')
+
+
                     losses[k] = torch.mean(losses[k]).item()
+
                 if rank == 0:
                     str_losses = [f'{k} {v:.3E}' for k, v in losses.items()]
                     logger.info('[E {} | it {}] loss {{{}}}'.format(
@@ -307,6 +315,7 @@ def training(rank, conf, output_dir, args):
                         writer.add_scalar('training/'+k, v, tot_it)
                     writer.add_scalar(
                         'training/lr', optimizer.param_groups[0]['lr'], tot_it)
+
 
             del pred, data, loss, losses
 
