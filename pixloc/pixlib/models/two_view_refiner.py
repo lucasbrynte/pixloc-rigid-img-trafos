@@ -139,6 +139,7 @@ class TwoViewRefiner(BaseModel):
         losses = {'total': 0.}
         for i, T_opt in enumerate(pred['T_r2q_opt']):
             err = reprojection_error(T_opt).clamp(max=self.conf.clamp_error)
+            err[err.isnan()] = self.conf.clamp_error
             loss = err / num_scales
             if i > 0:
                 loss = loss * success.float()
