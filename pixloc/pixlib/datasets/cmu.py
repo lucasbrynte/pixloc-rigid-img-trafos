@@ -129,8 +129,10 @@ class _Dataset(torch.utils.data.Dataset):
                     # Set the subset complement to have no matches among the reference image
                     pairs[subset_complement, :] = False
                 pairs = np.stack(np.where(pairs), -1)
-                logger.info(f'Total number of query-ref pairs found after subsampling query images: {len(pairs)}')
-                logger.info(f'First 50 found pairs after subsampling are:\n {pairs[:50]}')
+                logger.info(f'Split: {self.split}, Slice: {slice_}, '
+                            f'Total number of query-ref pairs found after subsampling query images: {len(pairs)}')
+                logger.info(f'Split: {self.split}, Slice: {slice_}, '
+                            f'First 50 found pairs after subsampling are:\n {pairs[:50]}')
 
                 # Sample `num` pairs to use in this epoch:
                 if len(pairs) >= num:
@@ -139,7 +141,7 @@ class _Dataset(torch.utils.data.Dataset):
                     pairs = pairs[selected]
                 else:
                     logger.warning(
-                        f"Number of pairs ({len(pairs)}) found was lower than {num}."
+                        f"Split: {self.split}, Slice: {slice_}, Number of pairs ({len(pairs)}) found was lower than {num}."
                     )
                 pairs = [(slice_, i, j, mat[i, j]) for i, j in pairs]
                 self.items.extend(pairs)
