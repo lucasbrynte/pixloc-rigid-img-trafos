@@ -299,11 +299,11 @@ def training(rank, conf, output_dir, args):
                         torch.distributed.reduce(losses[k], dst=0)
                         losses[k] /= (train_loader.batch_size * args.n_gpus)
 
-                    if torch.any(torch.isnan(losses[k]):
-                        logger.warning(f'nan-loss found: {k}\n'
-                                       f'training query-ref pairs:\n'
-                                       f'{"\n  ".join(train_loader.dataset.items)}')
-
+                    if torch.any(torch.isnan(losses[k])):
+                        newline = "\n"
+                        logger.warning(f'nan-loss found: {k}{newline}'
+                                       f'training query-ref pairs:{newline}'
+                                       f'{newline.join(train_loader.dataset.items)}')
 
                     losses[k] = torch.mean(losses[k]).item()
 
