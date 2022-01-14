@@ -116,7 +116,8 @@ class _Dataset(torch.utils.data.Dataset):
                     pairs &= (info['query_to_ref_distance_matrix']
                               < self.conf.max_baseline)
                 # Subsample the set of query images:
-                if self.conf['proportion_of_data_used'] < 1 and \
+                if (self.split == 'train') and \
+                   self.conf['proportion_of_data_used'] < 1 and \
                    self.conf['proportion_of_data_used'] > 0:
                     nbr_queries = pairs.shape[0]
                     data_subset_num = int(np.round(
