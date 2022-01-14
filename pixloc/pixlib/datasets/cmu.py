@@ -129,6 +129,9 @@ class _Dataset(torch.utils.data.Dataset):
                     # Set the subset complement to have no matches among the reference image
                     pairs[subset_complement, :] = False
                 pairs = np.stack(np.where(pairs), -1)
+                logger.info(f'Total number of query-ref pairs found after subsampling query images: {len(pairs)}')
+                logger.info(f'First 50 found pairs after subsampling are:\n {pairs[:50]}')
+
                 # Sample `num` pairs to use in this epoch:
                 if len(pairs) >= num:
                     selected = np.random.RandomState(seed).choice(
