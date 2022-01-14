@@ -265,6 +265,16 @@ def training(rank, conf, output_dir, args):
             losses = loss_fn(pred, data)
             loss = torch.mean(losses['total'])
 
+            if torch.any(torch.isnan(losses["total"])):
+                newline = "\n"
+                logger.warning(
+                    f'nan-loss found:'
+                    f'  query image:{newline}'
+                    f'  {str(data["query"]["name"])}{newline}'
+                    f'  reference image:{newline}'
+                    f'  {str(data["ref"]["name"])}'
+                )
+
             do_backward = loss.requires_grad
             if args.distributed:
                 do_backward = torch.tensor(do_backward).float().to(device)
@@ -298,12 +308,6 @@ def training(rank, conf, output_dir, args):
                         losses[k] = losses[k].sum()
                         torch.distributed.reduce(losses[k], dst=0)
                         losses[k] /= (train_loader.batch_size * args.n_gpus)
-
-                    if torch.any(torch.isnan(losses[k])):
-                        newline = "\n"
-                        logger.warning(f'nan-loss found: {k}{newline}'
-                                       f'training query-ref pairs:{newline}'
-                                       f'{newline.join(str(i) for i in sorted(train_loader.dataset.items))}')
 
                     losses[k] = torch.mean(losses[k]).item()
 
