@@ -57,6 +57,17 @@ def do_evaluation(model, loader, device, loss_fn, metrics_fn, conf, pbar=True):
         with torch.no_grad():
             pred = model(data)
             losses = loss_fn(pred, data)
+
+            if torch.any(torch.isnan(losses["total"])):
+                newline = "\n"
+                logger.warning(
+                    f'nan-loss found in evaluation:'
+                    f'  query image:{newline}'
+                    f'  {str(data["query"]["name"])}{newline}'
+                    f'  reference image:{newline}'
+                    f'  {str(data["ref"]["name"])}'
+                )
+
             metrics = metrics_fn(pred, data)
             del pred, data
         numbers = {**metrics, **{'loss/'+k: v for k, v in losses.items()}}
