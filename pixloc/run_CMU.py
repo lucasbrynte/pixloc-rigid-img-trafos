@@ -4,6 +4,7 @@ from . import set_logging_debug, logger
 from .localization import RetrievalLocalizer, PoseLocalizer
 from .utils.data import Paths, create_argparser, parse_paths, parse_conf
 from .utils.io import write_pose_results, concat_results
+from omegaconf import OmegaConf as oc
 
 
 default_paths = Paths(
@@ -101,12 +102,17 @@ def main():
     parser.add_argument('--slices', type=str,
                         help='a single number, an interval (e.g. 2-6), '
                         'or a Python-style list or int (e.g. [2, 3, 4]')
+    parser.add_argument('--undistort', action='store_true')
+    parser.add_argument('--warp', action='store_true')
     args = parser.parse_intermixed_args()
 
     set_logging_debug(args.verbose)
     paths = parse_paths(args, default_paths)
     conf = parse_conf(args, default_confs)
     slices = parse_slice_arg(args.slices)
+
+    conf.refinement['undistort_images'] = args.undistort
+    conf.refinement['warp_PY_images'] = args.warp
 
     all_results = []
     logger.info('Will evaluate slices %s.', slices)

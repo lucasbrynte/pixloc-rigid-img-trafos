@@ -4,16 +4,22 @@ from typing import Dict, List, Tuple, Optional, Union
 from omegaconf import DictConfig, OmegaConf as oc
 import numpy as np
 import torch
+import copy
+import cv2
 
 from .feature_extractor import FeatureExtractor
 from .model3d import Model3D
 from .tracker import BaseTracker
 from ..pixlib.geometry import Pose, Camera
 from ..pixlib.datasets.view import read_image
+from ..pixlib.datasets.view import numpy_image_to_torch
+from ..pixlib.datasets.view import torch_image_to_numpy
 from ..utils.data import Paths
 
 logger = logging.getLogger(__name__)
 
+CAMERAS = '''c0 OPENCV 1024 768 868.993378 866.063001 525.942323 420.042529 -0.399431 0.188924 0.000153 0.000571
+c1 OPENCV 1024 768 873.382641 876.489513 529.324138 397.272397 -0.397066 0.181925 0.000176 -0.000579'''
 
 class BaseRefiner:
     base_default_config = dict(
@@ -26,6 +32,8 @@ class BaseRefiner:
         average_observations=False,
         normalize_descriptors=True,
         compute_uncertainty=True,
+        undistort_images=False,
+        warp_PY_images=False,
     )
 
     default_config = dict()
@@ -43,6 +51,16 @@ class BaseRefiner:
         self.model3d = model3d
         self.feature_extractor = feature_extractor
         self.paths = paths
+
+        self.cameras = {}
+        for c in CAMERAS.split('\n'):
+            data = c.split()
+            name, camera_model, width, height = data[:4]
+            params = np.array(data[4:], float)
+            camera = Camera.from_colmap(dict(
+                    model=camera_model, params=params,
+                    width=int(width), height=int(height)))
+            self.cameras[name] = camera
 
         self.conf = oc.merge(
             oc.create(self.base_default_config),
@@ -145,8 +163,24 @@ class BaseRefiner:
             multiscales = [1]
 
         rnames = [self.model3d.dbs[i].name for i in dbid_to_p3dids.keys()]
+        cameras_ref = [self.cameras[n.split('_')[2]] for n in rnames]
         images_ref = [read_image(self.paths.reference_images / n)
                       for n in rnames]
+        camera_query = self.cameras[qname.split('_')[2]]
+        image_query = read_image(self.paths.query_images / qname)
+        if self.conf.undistort_images:
+            tmp_ref = list(zip(*[self._undistort(im, cam)
+                                 for (im, cam) in zip(images_ref, cameras_ref)]))
+            images_ref = tmp_ref[0]
+            cameras_ref = tmp_ref[1]
+            image_query, camera_query = self._undistort(image_query, camera_query)
+        if self.conf.warp_PY_images:
+            if not self.conf.undistort_images:
+                raise ValueError()
+            tmp_ref = list(zip(*[self._warp_PY(im, cam)
+                                 for (im, cam) in zip(images_ref, cameras_ref)]))
+            images_ref = tmp_ref[0]
+            image_query, _ = self._warp_PY(image_query, camera_query)
 
         for image_scale in multiscales:
             # Compute the reference observations
@@ -172,7 +206,6 @@ class BaseRefiner:
                     for feat in zip(*feats)]))
 
             # Compute dense query feature maps
-            image_query = read_image(self.paths.query_images / qname)
             features_query, scales_query = self.dense_feature_extraction(
                         image_query, qname, image_scale)
 
@@ -268,3 +301,127 @@ class BaseRefiner:
                             observation = observation.mean(0)
                     p3did_to_feat[p3id].append(observation)
         return dict(p3did_to_feat)
+
+    # TODO-G factor out this shared code...
+    # copied from cmu.py
+    def _undistort(self, image, camera):
+        h, w = image.shape[:2]
+        camera_np = copy.deepcopy(camera)
+        camera_np._data = camera_np._data.numpy()
+        K = np.zeros((3, 3))
+        K[0, 0], K[1, 1] = camera_np.f[0], camera_np.f[1]
+        K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
+        K[2, 2] = 1
+        # Get calibration matrix that captures the complete undistorted image
+        K_new, roi = cv2.getOptimalNewCameraMatrix(K,
+                                                   camera_np.dist,
+                                                   (w, h),
+                                                   1,  # 1: all pixels in orig. image included, 0: no black pixels included
+                                                   (w, h))
+        image_undist = cv2.undistort(image, K, camera_np.dist, None, K_new)
+        camera_undist = copy.deepcopy(camera)
+        camera_undist.dist[:] = 0
+        camera_undist.f[0] = K_new[0, 0]
+        camera_undist.f[1] = K_new[1, 1]
+        camera_undist.c[0] = K_new[0, 2]
+        camera_undist.c[1] = K_new[1, 2]
+        # It is possible to crop out some "black parts" of the image by uncommenting below:
+        # x, y, w, h = roi
+        # image_undist = image_undist[y:y+h, x:x+w]
+        # camera_undist.size[0] = w
+        # camera_undist.size[1] = h
+        return image_undist, camera_undist
+
+    def _warp_PY(self, image, camera):
+        # Operates on undistorted images!
+        h, w = image.shape[:2]
+        camera_np = copy.deepcopy(camera)
+        camera_np._data = camera_np._data.numpy()
+        K = np.zeros((3, 3))
+        K[0, 0], K[1, 1] = camera_np.f[0], camera_np.f[1]
+        K[0, 2], K[1, 2] = camera_np.c[0], camera_np.c[1]
+        K[2, 2] = 1
+
+        # Find what normalized range the pixels go to
+        extreme_x = np.array([0.0, w])
+        extreme_y = np.array([0.0, h])
+        extreme_x, extreme_y = (extreme_x - K[0, 2])/K[0, 0], \
+            (extreme_y - K[1, 2])/K[1, 1]
+        # get bounding box and new camera parameters
+        A, B, C, D, K_new = self.PY_bounding_box(
+            extreme_x[0], extreme_x[-1], extreme_y[0], extreme_y[-1], w, h)
+
+        # map_x and map_y will contain the pixel coordinates
+        # in the original image
+        # corresponding to the pixels in the new image.
+        # 1. Define a grid in normalized PY-space
+        map_x, map_y = np.meshgrid(
+            np.linspace(A, B, w, dtype=np.float32),
+            np.linspace(C, D, h, dtype=np.float32))
+        # 2. tan-warp to normalized P2-space
+        r = np.clip(np.sqrt(map_x**2 + map_y**2), a_min=1.0e-8, a_max=None)
+        r = np.tan(r) / r
+        map_x, map_y = r * map_x, r * map_y
+        # 3. unnormalize
+        map_x, map_y = K[0, 0] * map_x + K[0, 2], \
+            K[1, 1] * map_y + K[1, 2]
+
+        image_warp = cv2.remap(image, map_x, map_y, cv2.INTER_LINEAR)
+
+        # fix camera parameters
+        camera_warp = copy.deepcopy(camera)
+        camera_warp.f[0] = K_new[0, 0]
+        camera_warp.f[1] = K_new[1, 1]
+        camera_warp.c[0] = K_new[0, 2]
+        camera_warp.c[1] = K_new[1, 2]
+        camera_warp.dist[:2] = np.nan  # specifies special arctan "distortion"
+
+        return image_warp, camera_warp
+
+    @staticmethod
+    def PY_bounding_box(a, b, c, d, w, h):
+        # if rho is map P^2 -> PY,
+        # finds A,B,C,D so that rho([a,b]x[c,d]) < [A,B]x[C,D]
+        # and calibration parameters that maps [A,B]x[C,D] to [0,w]x[0,h]
+
+        # A
+        # max arctan(r)/r value will be on x axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(a), a_min=1.0e-8, a_max=None)
+        A = a * np.arctan(r)/r
+
+        # B
+        # max arctan(r)/r value will be on x axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(b), a_min=1.0e-8, a_max=None)
+        B = b * np.arctan(r)/r
+
+        # C
+        # max arctan(r)/r value will be on y axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(c), a_min=1.0e-8, a_max=None)
+        C = c * np.arctan(r)/r
+
+        # D
+        # max arctan(r)/r value will be on y axis,
+        # since r will be larger for other pixels on the edge
+        r = np.clip(np.abs(d), a_min=1.0e-8, a_max=None)
+        D = d * np.arctan(r)/r
+
+        # calculate calibration parameters
+        K = np.zeros((3, 3))
+
+        # TODO-G: check these (here I ignored half-pixels etc.):
+        K[0, 0] = w/(B-A)
+        K[0, 2] = -A * K[0, 0]
+        K[1, 1] = h/(D-C)
+        K[1, 2] = -C * K[1, 1]
+        K[2, 2] = 1
+        # earlier values that seem to have incorrect units:
+        # K[0, 0] = (B-A)/w
+        # K[0, 2] = 0.5*(w-(B+A)/K[0, 0])
+        # K[1, 1] = (D-C)/h
+        # K[1, 2] = 0.5*(h-(C+D)/K[1, 1])
+        # K[2, 2] = 1
+
+        return A, B, C, D, K
