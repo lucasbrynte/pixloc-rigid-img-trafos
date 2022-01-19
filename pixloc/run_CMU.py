@@ -114,6 +114,8 @@ def main():
     conf.refinement['undistort_images'] = args.undistort
     conf.refinement['warp_PY_images'] = args.warp
 
+    logger.info('run_CMU configuration:\n%s', oc.to_yaml(conf))
+
     all_results = []
     logger.info('Will evaluate slices %s.', slices)
     for slice_ in slices:
