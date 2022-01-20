@@ -34,7 +34,7 @@ def optimizer_step(g, H, lambda_=0, mute=False, mask=None, eps=1e-6):
     try:
         U = cholesky(H_)
     except RuntimeError as e:
-        if 'singular U' in str(e):
+        if 'singular U' in str(e) or 'input is not positive-definite' in str(e):
             if not mute:
                 logger.debug(
                     'Cholesky decomposition failed, fallback to LU.')
