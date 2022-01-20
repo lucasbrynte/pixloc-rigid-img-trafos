@@ -35,6 +35,10 @@ def optimizer_step(g, H, lambda_=0, mute=False, mask=None, eps=1e-6):
         U = cholesky(H_)
     except RuntimeError as e:
         if 'singular U' in str(e) or 'input is not positive-definite' in str(e):
+            if H_.isnan().any():
+                logger.warning('NaN in H_')
+            if H_.isinf().any():
+                logger.warning('Inf in H_')
             if not mute:
                 logger.debug(
                     'Cholesky decomposition failed, fallback to LU.')
