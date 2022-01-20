@@ -47,7 +47,7 @@ model:
       type: constant
 train:
   # seed: 0
-  epochs: 200
+  epochs: 20000
   nbr_iter: 45000
   log_every_iter: 500
   eval_every_iter: 500
