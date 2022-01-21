@@ -166,21 +166,21 @@ class BaseRefiner:
         cameras_ref = [self.cameras[n.split('_')[2]] for n in rnames]
         images_ref = [read_image(self.paths.reference_images / n)
                       for n in rnames]
-        camera_query = self.cameras[qname.split('_')[2]]
         image_query = read_image(self.paths.query_images / qname)
         if self.conf.undistort_images:
             tmp_ref = list(zip(*[self._undistort(im, cam)
                                  for (im, cam) in zip(images_ref, cameras_ref)]))
             images_ref = tmp_ref[0]
             cameras_ref = tmp_ref[1]
-            image_query, camera_query = self._undistort(image_query, camera_query)
+            image_query, qcamera = self._undistort(image_query, camera_query)
         if self.conf.warp_PY_images:
             if not self.conf.undistort_images:
                 raise ValueError()
             tmp_ref = list(zip(*[self._warp_PY(im, cam)
                                  for (im, cam) in zip(images_ref, cameras_ref)]))
             images_ref = tmp_ref[0]
-            image_query, _ = self._warp_PY(image_query, camera_query)
+            cameras_ref = tmp_ref[1]
+            image_query, qcamera = self._warp_PY(image_query, camera_query)
 
         for image_scale in multiscales:
             # Compute the reference observations
@@ -192,7 +192,7 @@ class BaseRefiner:
                 features_ref_dense, scales_ref = self.dense_feature_extraction(
                         images_ref[idx], rnames[idx], image_scale)
                 dbid_p3did_to_feats[dbid] = self.interp_sparse_observations(
-                        features_ref_dense, scales_ref, dbid, p3dids)
+                        features_ref_dense, cameras_ref[idx], scales_ref, dbid, p3dids)
                 del features_ref_dense
 
             p3did_to_feat = self.aggregate_features(
@@ -241,12 +241,13 @@ class BaseRefiner:
 
     def interp_sparse_observations(self,
                                    feature_maps: List[torch.Tensor],
+                                   camera: Camera,
                                    feature_scales: List[float],
                                    image_id: float,
                                    p3dids: List[int],
                                    ) -> Dict[int, torch.Tensor]:
         image = self.model3d.dbs[image_id]
-        camera = Camera.from_colmap(self.model3d.cameras[image.camera_id])
+        # camera = Camera.from_colmap(self.model3d.cameras[image.camera_id])
         T_w2cam = Pose.from_colmap(image)
         p3d = np.array([self.model3d.points3D[p3did].xyz for p3did in p3dids])
         p3d_cam = T_w2cam * p3d
