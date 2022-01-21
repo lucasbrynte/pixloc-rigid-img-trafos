@@ -129,7 +129,8 @@ class TwoViewRefiner(BaseModel):
 
         def reprojection_error(T_r2q):
             p2D_q, _ = project(T_r2q)
-            err = torch.sum((p2D_q_gt - p2D_q)**2, dim=-1)
+            err = (p2D_q_gt - p2D_q).clamp(min=-1e5, max=1e5)  # clamp to avoid Inf below perhaps leading to NaN later
+            err = torch.sum(err**2, dim=-1)
             err = scaled_barron(1., 2.)(err)[0]/4
             err = masked_mean(err, mask, -1)
             return err
@@ -139,6 +140,8 @@ class TwoViewRefiner(BaseModel):
         losses = {'total': 0.}
         for i, T_opt in enumerate(pred['T_r2q_opt']):
             err = reprojection_error(T_opt).clamp(max=self.conf.clamp_error)
+            if torch.any(err.isnan()):
+                logger.warning("nan in reproj error")
             err[err.isnan()] = self.conf.clamp_error
             loss = err / num_scales
             if i > 0:
