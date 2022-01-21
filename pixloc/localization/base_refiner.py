@@ -172,7 +172,7 @@ class BaseRefiner:
                                  for (im, cam) in zip(images_ref, cameras_ref)]))
             images_ref = tmp_ref[0]
             cameras_ref = tmp_ref[1]
-            image_query, qcamera = self._undistort(image_query, camera_query)
+            image_query, qcamera = self._undistort(image_query, qcamera)
         if self.conf.warp_PY_images:
             if not self.conf.undistort_images:
                 raise ValueError()
@@ -180,7 +180,7 @@ class BaseRefiner:
                                  for (im, cam) in zip(images_ref, cameras_ref)]))
             images_ref = tmp_ref[0]
             cameras_ref = tmp_ref[1]
-            image_query, qcamera = self._warp_PY(image_query, camera_query)
+            image_query, qcamera = self._warp_PY(image_query, qcamera)
 
         for image_scale in multiscales:
             # Compute the reference observations
