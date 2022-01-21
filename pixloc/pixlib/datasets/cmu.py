@@ -131,8 +131,6 @@ class _Dataset(torch.utils.data.Dataset):
                 pairs = np.stack(np.where(pairs), -1)
                 logger.info(f'Split: {self.split}, Slice: {slice_}, '
                             f'Total number of query-ref pairs found after subsampling query images: {len(pairs)}')
-                logger.info(f'Split: {self.split}, Slice: {slice_}, '
-                            f'First 50 found pairs after subsampling are:\n {pairs[:50]}')
 
                 # Sample `num` pairs to use in this epoch:
                 if len(pairs) >= num:
