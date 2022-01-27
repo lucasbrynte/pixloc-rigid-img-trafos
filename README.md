@@ -3,7 +3,12 @@
 </p>
 
 
-# Camera Localization from Pixels to Pose
+# Camera Localization from Pixels to Pose with modifications for Rigidity Preserving Image Transformations
+This code is a modification of the PixLoc repository found [on GitHub](https://github.com/cvg/pixloc).
+This README is a modification of the original PixLoc README, which is reproduced in its entirety further down.
+
+To be able to run the experiments for the Rigidity Preserving Image Transformations paper, use the original [installation instructions](#installation) from PixLoc.
+
 
 We introduce PixLoc, a neural network that **localizes a given image via direct feature alignment with a 3D model of the environment**. PixLoc is trained end-to-end and is interpretable, accurate, and generalizes to new scenes and across domains, e.g. from outdoors to indoors. It is described in our paper:
 
