@@ -48,7 +48,7 @@ model:
 train:
   # seed: 0
   epochs: 200
-  nbr_iter: 60000
+  nbr_iter: 45000
   log_every_iter: 500
   eval_every_iter: 500
   dataset_callback_fn: sample_new_items
